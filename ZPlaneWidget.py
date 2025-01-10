@@ -2,8 +2,8 @@ import sys
 import numpy as np
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QCheckBox, QPushButton, QApplication, QToolTip)
-from PySide6.QtCore import Qt, QPointF
-from PySide6.QtGui import QPainter, QPen, QColor
+from PySide6.QtCore import Qt, QPointF, QRect
+from PySide6.QtGui import QPainter, QPen, QColor, QPixmap
 
 from logger_config import setup_logger
 logger = setup_logger(__name__)
@@ -32,6 +32,12 @@ class ZPlaneWidget(QWidget):
         self.hover_pos = None
         self.dragging_new = False
         self.drag_start_pos = None
+        self.trash_rect = QRect()
+        self.trash_open = False
+        self.trash_hover = False
+
+        self.trash_closed_icon = QPixmap("icons/trash-closed.png")
+        self.trash_opened_icon = QPixmap("icons/trash-opened.png")
 
         self.setup_ui()
         self.save_state()
@@ -94,6 +100,17 @@ class ZPlaneWidget(QWidget):
         layout.addStretch()
         layout.addWidget(self.pos_label)
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        trash_size = 32  # Size of the trash can icon
+        padding = 10  # Padding from widget edges
+        self.trash_rect = QRect(
+            self.width() - trash_size - padding,
+            self.height() - trash_size - padding,
+            trash_size,
+            trash_size
+        )
+
     def start_drag_zero(self, event):
         self.dragging_new = True
         self.add_mode = 'zero'
@@ -143,6 +160,12 @@ class ZPlaneWidget(QWidget):
                 #     self.draw_pole(painter, conj_point, phantom=True)
                 conj_point = self.complex_to_point(pos.conjugate())
                 self.draw_pole(painter, conj_point, phantom=True)
+
+        painter.setOpacity(1)
+        if self.trash_open:
+            painter.drawPixmap(self.trash_rect, self.trash_opened_icon)
+        else:
+            painter.drawPixmap(self.trash_rect, self.trash_closed_icon)
 
     def draw_guidelines(self, painter, center, radius):
         # Draw radius circles
@@ -318,10 +341,17 @@ class ZPlaneWidget(QWidget):
 
         if self.dragging_new:
             self.hover_pos = snapped_pos
+            near_trash = self.trash_rect.adjusted(-20, -20, 20, 20).contains(event.pos())
+            if near_trash != self.trash_open:  # State changed
+                self.trash_open = near_trash
             self.update()
         elif self.dragging_item:
             elements = self.zeros if self.dragging_type == 'zero' else self.poles
             new_pos = self.point_to_complex(snapped_pos)
+
+            near_trash = self.trash_rect.adjusted(-20, -20, 20, 20).contains(event.pos())
+            if near_trash != self.trash_open:  # State changed
+                self.trash_open = near_trash
 
             if self.dragging_item.is_phantom:
                 parent = elements[self.dragging_item.parent_index]
@@ -341,6 +371,17 @@ class ZPlaneWidget(QWidget):
             self.update()
 
     def mouseReleaseEvent(self, event):
+        if self.dragging_item:
+            if self.trash_open:
+                self.delete_element(self.dragging_item, self.dragging_type)
+                self.dragging_item = None
+                self.dragging_type = None
+                self.dragging_index = -1
+                self.trash_open = False
+                self.save_state()
+                self.update()
+                return
+
         if self.dragging_new:
             snapped_pos = self.snap_to_guidelines(event.pos())
             z = self.point_to_complex(snapped_pos)
@@ -367,7 +408,25 @@ class ZPlaneWidget(QWidget):
             self.save_state()
 
         self.hover_pos = None
+        self.trash_open = False
         self.update()
+
+    def delete_element(self, element, element_type):
+        if element_type == 'zero':
+            elements = self.zeros
+        else:
+            elements = self.poles
+
+        if element.is_phantom:
+            parent = elements[element.parent_index]
+            elements.remove(parent)
+            elements.remove(element)
+        else:
+            for e in elements:
+                if e.is_phantom and e.parent_index == elements.index(element):
+                    elements.remove(e)
+                    break
+            elements.remove(element)
 
     def toggle_conjugate_mode(self, state):
         self.conjugate_mode = self.conjugate_checkbox.isChecked()
