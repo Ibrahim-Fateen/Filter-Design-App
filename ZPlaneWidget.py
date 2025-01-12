@@ -10,21 +10,30 @@ logger = setup_logger(__name__)
 
 
 class ZPlaneElement:
-    def __init__(self, position, is_phantom=False, parent_index=-1):
+    def __init__(self, position, is_phantom=False):
         self.position = position
         self.is_phantom = is_phantom
-        self.parent_index = parent_index
+        self.conjugate = None  # Reference to conjugate pair
+
+    def create_conjugate(self):
+        """Create and link a conjugate pair"""
+        if not self.conjugate:
+            phantom = ZPlaneElement(self.position.conjugate(), is_phantom=True)
+            phantom.conjugate = self
+            self.conjugate = phantom
+            return phantom
+        return None
+
 
 class ZPlaneWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(500, 500)
-        self.setMouseTracking(True)  # Enable mouse tracking for guidelines
+        self.setMouseTracking(True)
         self.zeros = []
         self.poles = []
         self.dragging_item = None
         self.dragging_type = None
-        self.dragging_index = -1
         self.add_mode = None
         self.history = []
         self.history_index = -1
@@ -34,7 +43,6 @@ class ZPlaneWidget(QWidget):
         self.drag_start_pos = None
         self.trash_rect = QRect()
         self.trash_open = False
-        self.trash_hover = False
 
         self.trash_closed_icon = QPixmap("icons/trash-closed.png")
         self.trash_opened_icon = QPixmap("icons/trash-opened.png")
@@ -276,18 +284,21 @@ class ZPlaneWidget(QWidget):
             return f"{rad:.2f}π"
 
     def draw_elements(self, painter, elements, is_pole):
-        """Draw all visible elements (normal and phantom conjugates if enabled)"""
+        """Draw all elements, showing phantoms only if conjugate mode is enabled"""
         for element in elements:
-            # Skip phantom elements if conjugate mode is disabled
-            # if element.is_phantom and not self.conjugate_mode:
-            #     continue
+            if not element.is_phantom:  # Always draw main elements
+                point = self.complex_to_point(element.position)
+                if is_pole:
+                    self.draw_pole(painter, point, False)
+                else:
+                    self.draw_zero(painter, point, False)
 
+            # Draw phantom only if conjugate mode is enabled
             point = self.complex_to_point(element.position)
-
             if is_pole:
-                self.draw_pole(painter, point, element.is_phantom)
+                self.draw_pole(painter, point, True)
             else:
-                self.draw_zero(painter, point, element.is_phantom)
+                self.draw_zero(painter, point, True)
 
     def draw_zero(self, painter, point, phantom=False):
         painter.setOpacity(0.2 if phantom and not self.conjugate_mode else 1.0)
@@ -342,31 +353,23 @@ class ZPlaneWidget(QWidget):
         if self.dragging_new:
             self.hover_pos = snapped_pos
             near_trash = self.trash_rect.adjusted(-20, -20, 20, 20).contains(event.pos())
-            if near_trash != self.trash_open:  # State changed
+            if near_trash != self.trash_open:
                 self.trash_open = near_trash
             self.update()
         elif self.dragging_item:
-            elements = self.zeros if self.dragging_type == 'zero' else self.poles
             new_pos = self.point_to_complex(snapped_pos)
 
             near_trash = self.trash_rect.adjusted(-20, -20, 20, 20).contains(event.pos())
-            if near_trash != self.trash_open:  # State changed
+            if near_trash != self.trash_open:
                 self.trash_open = near_trash
 
             if self.dragging_item.is_phantom:
-                parent = elements[self.dragging_item.parent_index]
-                parent.position = new_pos.conjugate()
                 self.dragging_item.position = new_pos
+                self.dragging_item.conjugate.position = new_pos.conjugate()
             else:
                 self.dragging_item.position = new_pos
-                # if self.conjugate_mode:
-                    # for element in elements:
-                    #     if element.is_phantom and element.parent_index == self.dragging_index:
-                    #         element.position = new_pos.conjugate()
-                for element in elements:
-                    if element.is_phantom and element.parent_index == self.dragging_index:
-                        element.position = new_pos.conjugate()
-                        break
+                if self.dragging_item.conjugate:
+                    self.dragging_item.conjugate.position = new_pos.conjugate()
 
             self.update()
 
@@ -412,21 +415,20 @@ class ZPlaneWidget(QWidget):
         self.update()
 
     def delete_element(self, element, element_type):
+        """Delete both an element and its conjugate pair"""
         if element_type == 'zero':
             elements = self.zeros
         else:
             elements = self.poles
 
+        # Remove both the element and its conjugate
         if element.is_phantom:
-            parent = elements[element.parent_index]
-            elements.remove(parent)
-            elements.remove(element)
+            elements.remove(element.conjugate)  # Remove the main element
+            elements.remove(element)  # Remove the phantom
         else:
-            for e in elements:
-                if e.is_phantom and e.parent_index == elements.index(element):
-                    elements.remove(e)
-                    break
-            elements.remove(element)
+            if element.conjugate:
+                elements.remove(element.conjugate)  # Remove the phantom
+            elements.remove(element)  # Remove the main element
 
     def toggle_conjugate_mode(self, state):
         self.conjugate_mode = self.conjugate_checkbox.isChecked()
@@ -434,16 +436,17 @@ class ZPlaneWidget(QWidget):
         self.save_state()
 
     def add_element(self, position, element_type):
-        """Add a new element and its phantom conjugate if needed"""
+        """Add a new element with its conjugate pair"""
         new_element = ZPlaneElement(position)
         elements = self.zeros if element_type == 'zero' else self.poles
 
         # Add the main element
         elements.append(new_element)
-        main_index = len(elements) - 1
 
-        phantom = ZPlaneElement(position.conjugate(), is_phantom=True, parent_index=main_index)
-        elements.append(phantom)
+        # Create and add its conjugate
+        phantom = new_element.create_conjugate()
+        if phantom:
+            elements.append(phantom)
 
     def complex_to_point(self, z):
         center = QPointF(self.width() / 2, self.height() / 2)
@@ -463,14 +466,27 @@ class ZPlaneWidget(QWidget):
         self.add_mode = mode
 
     def save_state(self):
+        """Save the current state for undo/redo"""
         self.history = self.history[:self.history_index + 1]
+
+        # Create new elements without maintaining references
         state = {
-            'zeros': [ZPlaneElement(e.position, e.is_phantom, e.parent_index)
-                      for e in self.zeros],
-            'poles': [ZPlaneElement(e.position, e.is_phantom, e.parent_index)
-                      for e in self.poles],
+            'zeros': [],
+            'poles': [],
             'conjugate_enabled': self.conjugate_mode
         }
+
+        # Save main elements and recreate conjugate relationships
+        for elements, key in [(self.zeros, 'zeros'), (self.poles, 'poles')]:
+            for element in elements:
+                if not element.is_phantom:
+                    new_element = ZPlaneElement(element.position)
+                    state[key].append(new_element)
+                    if element.conjugate:
+                        phantom = new_element.create_conjugate()
+                        if phantom:
+                            state[key].append(phantom)
+
         self.history.append(state)
         self.history_index += 1
         self.update_undo_redo_state()
