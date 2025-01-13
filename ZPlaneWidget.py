@@ -24,6 +24,12 @@ class ZPlaneElement:
             return phantom
         return None
 
+    def update_position(self, new_pos):
+        """Update position of element and its conjugate"""
+        self.position = new_pos
+        if self.conjugate:
+            self.conjugate.position = new_pos.conjugate()
+
 
 class ZPlaneWidget(QWidget):
     def __init__(self, parent=None):
@@ -43,6 +49,8 @@ class ZPlaneWidget(QWidget):
         self.drag_start_pos = None
         self.trash_rect = QRect()
         self.trash_open = False
+        self.filter = None
+        self._updating_from_filter = False
 
         self.trash_closed_icon = QPixmap("icons/trash-closed.png")
         self.trash_opened_icon = QPixmap("icons/trash-opened.png")
@@ -84,10 +92,9 @@ class ZPlaneWidget(QWidget):
         self.pole_widget.setStyleSheet("QWidget:hover { background-color: #e0e0e0; }")
         self.pole_widget.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        self.conjugate_checkbox = QCheckBox("Show Conjugates")
+        self.conjugate_checkbox = QCheckBox("Auto Add Conjugates")
         self.conjugate_checkbox.setChecked(True)
         self.conjugate_checkbox.clicked.connect(self.toggle_conjugate_mode)
-        # self.conjugate_checkbox.stateChanged.connect(self.toggle_conjugate_mode) # fixed the state being overwritten when toggling
 
         self.undo_button = QPushButton("↩ Undo")
         self.redo_button = QPushButton("↪ Redo")
@@ -107,6 +114,39 @@ class ZPlaneWidget(QWidget):
         layout.addLayout(top_controls)
         layout.addStretch()
         layout.addWidget(self.pos_label)
+
+    def set_filter(self, filter_instance):
+        self.filter = filter_instance
+        self.filter.subscribe(self.on_filter_update)
+        self.zeros = [ZPlaneElement(complex(z.real, z.imag)) for z in filter_instance.zeros]
+        self.poles = [ZPlaneElement(complex(p.real, p.imag)) for p in filter_instance.poles]
+        self.conjugate_mode = False
+        self.conjugate_checkbox.setChecked(False)
+        self.save_state()
+        self.update()
+
+    def on_filter_update(self, filter_instance):
+        self._updating_from_filter = True
+        self.zeros = []
+        self.poles = []
+
+        # Convert filter zeros/poles to complex numbers if they aren't already
+        zero_positions = [complex(z.real, z.imag) for z in filter_instance.zeros]
+        pole_positions = [complex(p.real, p.imag) for p in filter_instance.poles]
+
+        # Add elements with proper conjugate linking
+        self.add_elements_from_filter(zero_positions, 'zero')
+        self.add_elements_from_filter(pole_positions, 'pole')
+
+        self._updating_from_filter = False
+        self.update()
+
+    def notify_filter_change(self):
+        if self.filter:
+            zeros = [z for z in self.zeros]
+            poles = [p for p in self.poles]
+
+            self.filter.update_from_zplane(zeros, poles)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -285,29 +325,19 @@ class ZPlaneWidget(QWidget):
 
     def draw_elements(self, painter, elements, is_pole):
         """Draw all elements, showing phantoms only if conjugate mode is enabled"""
+        draw_func = self.draw_pole if is_pole else self.draw_zero
         for element in elements:
-            if not element.is_phantom:  # Always draw main elements
-                point = self.complex_to_point(element.position)
-                if is_pole:
-                    self.draw_pole(painter, point, False)
-                else:
-                    self.draw_zero(painter, point, False)
-
-            # Draw phantom only if conjugate mode is enabled
-            point = self.complex_to_point(element.position)
-            if is_pole:
-                self.draw_pole(painter, point, True)
-            else:
-                self.draw_zero(painter, point, True)
+            position = self.complex_to_point(element.position)
+            draw_func(painter, position)
 
     def draw_zero(self, painter, point, phantom=False):
-        painter.setOpacity(0.2 if phantom and not self.conjugate_mode else 1.0)
+        painter.setOpacity(0.2 if phantom else 1.0)
         painter.setPen(QPen(Qt.blue, 2))
         size = 5
         painter.drawEllipse(point, size, size)
 
     def draw_pole(self, painter, point, phantom=False):
-        painter.setOpacity(0.2 if phantom and not self.conjugate_mode else 1.0)
+        painter.setOpacity(0.2 if phantom else 1.0)
         painter.setPen(QPen(Qt.red, 2))
         size = 5
         painter.drawLine(point.x() - size, point.y() - size,
@@ -317,30 +347,24 @@ class ZPlaneWidget(QWidget):
 
     def mousePressEvent(self, event):
         if self.dragging_new:
-            return  # If we're already dragging a new element, don't do anything else
+            return
 
-        # Check if clicking on existing elements
         pos = event.pos()
         self.dragging_item = None
 
-        # Check zeros
-        for i, element in enumerate(self.zeros):
-            if not element.is_phantom or self.conjugate_mode:
-                if (self.complex_to_point(element.position) - pos).manhattanLength() < 10:
-                    self.dragging_item = element
-                    self.dragging_type = 'zero'
-                    self.dragging_index = i
-                    break
-
-        # Check poles
-        if not self.dragging_item:
-            for i, element in enumerate(self.poles):
-                if not element.is_phantom or self.conjugate_mode:
-                    if (self.complex_to_point(element.position) - pos).manhattanLength() < 10:
+        # Check zeros and poles
+        for elements, type_name in [(self.zeros, 'zero'), (self.poles, 'pole')]:
+            for i, element in enumerate(elements):
+                element_pos = self.complex_to_point(element.position)
+                if (element_pos - pos).manhattanLength() < 10:
+                    # If clicking on a phantom, use its main element instead
+                    if element.is_phantom:
+                        self.dragging_item = element.conjugate
+                    else:
                         self.dragging_item = element
-                        self.dragging_type = 'pole'
-                        self.dragging_index = i
-                        break
+                    self.dragging_type = type_name
+                    self.dragging_index = i
+                    return
 
     def mouseMoveEvent(self, event):
         self.hover_pos = event.pos()
@@ -363,14 +387,8 @@ class ZPlaneWidget(QWidget):
             if near_trash != self.trash_open:
                 self.trash_open = near_trash
 
-            if self.dragging_item.is_phantom:
-                self.dragging_item.position = new_pos
-                self.dragging_item.conjugate.position = new_pos.conjugate()
-            else:
-                self.dragging_item.position = new_pos
-                if self.dragging_item.conjugate:
-                    self.dragging_item.conjugate.position = new_pos.conjugate()
-
+            # Always update through the main element
+            self.dragging_item.update_position(new_pos)
             self.update()
 
     def mouseReleaseEvent(self, event):
@@ -382,6 +400,7 @@ class ZPlaneWidget(QWidget):
                 self.dragging_index = -1
                 self.trash_open = False
                 self.save_state()
+                self.notify_filter_change()
                 self.update()
                 return
 
@@ -412,6 +431,7 @@ class ZPlaneWidget(QWidget):
 
         self.hover_pos = None
         self.trash_open = False
+        self.notify_filter_change()
         self.update()
 
     def delete_element(self, element, element_type):
@@ -434,6 +454,8 @@ class ZPlaneWidget(QWidget):
         self.conjugate_mode = self.conjugate_checkbox.isChecked()
         self.update()
         self.save_state()
+        self.notify_filter_change()
+        return
 
     def add_element(self, position, element_type):
         """Add a new element with its conjugate pair"""
@@ -444,9 +466,39 @@ class ZPlaneWidget(QWidget):
         elements.append(new_element)
 
         # Create and add its conjugate
-        phantom = new_element.create_conjugate()
-        if phantom:
-            elements.append(phantom)
+        if not self._updating_from_filter and self.conjugate_mode:
+            phantom = new_element.create_conjugate()
+            if phantom:
+                elements.append(phantom)
+
+    def find_conjugate_pair(self, elements, position):
+        """Find an existing element that could be a conjugate pair"""
+        for element in elements:
+            if abs(element.position.conjugate() - position) < 1e-10:  # Use small epsilon for float comparison
+                return element
+        return None
+
+    def add_elements_from_filter(self, positions, element_type):
+        """Add multiple elements from filter, linking conjugates"""
+        elements = self.zeros if element_type == 'zero' else self.poles
+        processed = set()  # Keep track of processed positions
+
+        for pos in positions:
+            if pos in processed:
+                continue
+
+            new_element = ZPlaneElement(pos)
+            elements.append(new_element)
+            processed.add(pos)
+
+            # Look for conjugate pair in remaining positions
+            conj_pos = pos.conjugate()
+            if abs(conj_pos.imag) > 1e-10:  # Only look for conjugates if not on real axis
+                if conj_pos in positions:
+                    phantom = new_element.create_conjugate()
+                    if phantom:
+                        elements.append(phantom)
+                        processed.add(conj_pos)
 
     def complex_to_point(self, z):
         center = QPointF(self.width() / 2, self.height() / 2)
@@ -491,31 +543,26 @@ class ZPlaneWidget(QWidget):
         self.history_index += 1
         self.update_undo_redo_state()
 
+    def set_state(self, state):
+        self.zeros = [ZPlaneElement(e.position, e.is_phantom) for e in state['zeros']]
+        self.poles = [ZPlaneElement(e.position, e.is_phantom) for e in state['poles']]
+        self.conjugate_mode = state['conjugate_enabled']
+        self.conjugate_checkbox.setChecked(self.conjugate_mode)
+        self.update_undo_redo_state()
+        self.update()
+        self.notify_filter_change()
+
     def undo(self):
         if self.history_index > 0:
             self.history_index -= 1
             state = self.history[self.history_index]
-            self.zeros = [ZPlaneElement(e.position, e.is_phantom, e.parent_index)
-                          for e in state['zeros']]
-            self.poles = [ZPlaneElement(e.position, e.is_phantom, e.parent_index)
-                          for e in state['poles']]
-            self.conjugate_mode = state['conjugate_enabled']
-            self.conjugate_checkbox.setChecked(self.conjugate_mode)
-            self.update_undo_redo_state()
-            self.update()
+            self.set_state(state)
 
     def redo(self):
         if self.history_index < len(self.history) - 1:
             self.history_index += 1
             state = self.history[self.history_index]
-            self.zeros = [ZPlaneElement(e.position, e.is_phantom, e.parent_index)
-                          for e in state['zeros']]
-            self.poles = [ZPlaneElement(e.position, e.is_phantom, e.parent_index)
-                          for e in state['poles']]
-            self.conjugate_mode = state['conjugate_enabled']
-            self.conjugate_checkbox.setChecked(self.conjugate_mode)
-            self.update_undo_redo_state()
-            self.update()
+            self.set_state(state)
 
     def update_undo_redo_state(self):
         self.undo_button.setEnabled(self.history_index > 0)

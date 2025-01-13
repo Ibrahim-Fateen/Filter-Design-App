@@ -1,0 +1,191 @@
+import sys
+import numpy as np
+from PySide6.QtWidgets import QWidget, QHBoxLayout
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+from matplotlib.ticker import MultipleLocator, FuncFormatter
+
+
+class FilterPlotsWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(800, 400)
+        self.setup_ui()
+        self.filter = None
+
+    def setup_ui(self):
+        # Create main layout
+        layout = QHBoxLayout(self)
+
+        # Create figure with two subplots
+        self.figure = Figure(figsize=(8, 4))
+        self.canvas = FigureCanvas(self.figure)
+        layout.addWidget(self.canvas)
+
+        # Create magnitude subplot
+        self.mag_ax = self.figure.add_subplot(121)
+        self.mag_ax.set_title('Magnitude Response')
+        self.mag_ax.set_xlabel('ω (rad/sample)')
+        self.mag_ax.set_ylabel('Magnitude (dB)')
+        self.mag_ax.grid(True)
+
+        # Create phase subplot
+        self.phase_ax = self.figure.add_subplot(122)
+        self.phase_ax.set_title('Phase Response')
+        self.phase_ax.set_xlabel('ω (rad/sample)')
+        self.phase_ax.set_ylabel('Phase (rad)')
+        self.phase_ax.grid(True)
+
+        # Adjust layout to prevent overlapping
+        self.figure.tight_layout()
+
+        # Initialize plot lines
+        self.mag_line = None
+        self.phase_line = None
+
+        # Store vertical lines for cursor interaction
+        self.mag_vline = None
+        self.phase_vline = None
+
+        # Connect mouse events
+        self.canvas.mpl_connect('motion_notify_event', self.on_mouse_move)
+
+        # Initialize filter reference
+        self.filter = None
+
+    def set_filter(self, filter_instance):
+        """Connect to a filter instance"""
+        self.filter = filter_instance
+        self.filter.subscribe(self.update_plots)
+
+    def format_pi_ticks(self, x, pos):
+        """Format tick labels in terms of π"""
+        x_pi = x / np.pi
+        if x_pi == 0:
+            return "0"
+        elif x_pi == 1:
+            return "π"
+        elif x_pi == -1:
+            return "-π"
+        elif x_pi.is_integer():
+            return f"{int(x_pi)}π"
+        else:
+            if abs(x_pi) < 1:
+                frac = round(1 / x_pi)
+                return f"π/{frac}"
+            else:
+                return f"{x_pi:.2f}π"
+
+    def update_plots(self, filter_instance=None):
+        """Update both plots with new filter response"""
+        self.filter = filter_instance
+        if not self.filter:
+            return
+
+        # Get frequency response
+        w, magnitude_db, phase = self.filter.get_frequency_response()
+
+        phase = np.deg2rad(phase)
+
+        self.mag_ax.clear()
+        self.mag_ax.plot(w, magnitude_db)
+        self.mag_ax.grid(True)
+        self.mag_ax.set_title('Magnitude Response')
+        self.mag_ax.set_xlabel('ω (rad/sample)')
+        self.mag_ax.set_ylabel('Magnitude (dB)')
+
+        # Set reasonable y-axis limits for magnitude
+        min_mag = max(min(magnitude_db), -100)  # Limit to -100 dB
+        self.mag_ax.set_ylim(min_mag - 10, max(magnitude_db) + 10)
+
+        # Add horizontal line at -3dB for reference
+        self.mag_ax.axhline(y=-3, color='r', linestyle='--', alpha=0.5)
+        self.mag_ax.text(w[1], -3, '-3 dB', verticalalignment='bottom')
+
+        self.phase_ax.clear()
+        self.phase_ax.plot(w, phase)
+        self.phase_ax.grid(True)
+        self.phase_ax.set_title('Phase Response')
+        self.phase_ax.set_xlabel('ω (rad/sample)')
+        self.phase_ax.set_ylabel('Phase (rad)')
+
+        # Set reasonable y-axis limits for phase
+        self.phase_ax.set_ylim(-np.pi, np.pi)
+
+        # Add horizontal lines at ±π for reference
+        self.phase_ax.axhline(y=np.pi, color='r', linestyle='--', alpha=0.5)
+        self.phase_ax.axhline(y=-np.pi, color='r', linestyle='--', alpha=0.5)
+
+        # Set x-axis limits for both plots
+        self.mag_ax.set_xlim(0, np.pi)
+        self.phase_ax.set_xlim(0, np.pi)
+
+        # Set ticks for both plots
+        for ax in [self.mag_ax, self.phase_ax]:
+            # Set major ticks at multiples of π/4
+            ax.xaxis.set_major_locator(MultipleLocator(np.pi / 4))
+            ax.xaxis.set_major_formatter(FuncFormatter(self.format_pi_ticks))
+
+        # Set phase y-axis ticks at multiples of π/4
+        self.phase_ax.yaxis.set_major_locator(MultipleLocator(np.pi / 4))
+        self.phase_ax.yaxis.set_major_formatter(FuncFormatter(self.format_pi_ticks))
+
+        # Rotate x-axis labels for better readability
+        for ax in [self.mag_ax, self.phase_ax]:
+            ax.tick_params(axis='x', rotation=45)
+
+        # Update canvas
+        self.figure.tight_layout()
+        self.canvas.draw()
+
+    def on_mouse_move(self, event):
+        """Handle mouse movement to show frequency response at cursor"""
+        if event.inaxes in [self.mag_ax, self.phase_ax]:
+            # Remove old vertical lines
+            if self.mag_vline:
+                self.mag_vline.remove()
+            if self.phase_vline:
+                self.phase_vline.remove()
+
+            # Add new vertical lines at cursor x-position
+            self.mag_vline = self.mag_ax.axvline(x=event.xdata, color='k',
+                                                 linestyle=':', alpha=0.5)
+            self.phase_vline = self.phase_ax.axvline(x=event.xdata, color='k',
+                                                     linestyle=':', alpha=0.5)
+
+            # Get nearest frequency response values
+            if self.filter:
+                w, mag, phase = self.filter.get_frequency_response()
+                idx = np.abs(w - event.xdata).argmin()
+
+                # Update titles with current values
+                w_str = f'{event.xdata / np.pi:.2f}π'
+                self.mag_ax.set_title(f'Magnitude Response\nω = {w_str}: {mag[idx]:.1f} dB')
+                self.phase_ax.set_title(f'Phase Response\nω = {w_str}: {phase[idx]:.2f} rad')
+
+            self.canvas.draw()
+
+    def resizeEvent(self, event):
+        """Handle widget resize"""
+        super().resizeEvent(event)
+        self.figure.tight_layout()
+
+
+if __name__ == '__main__':
+    from PySide6.QtWidgets import QApplication
+    from Filter import Filter
+
+    app = QApplication(sys.argv)
+
+    # Create test filter
+    filter = Filter()
+    filter.zeros = [-1 + 1j, -1 - 1j]
+    filter.poles = [0.5 + 0.5j, 0.5 - 0.5j]
+
+    # Create and show plots widget
+    plots = FilterPlotsWidget()
+    plots.set_filter(filter)
+    plots.update_plots()
+    plots.show()
+
+    sys.exit(app.exec())
