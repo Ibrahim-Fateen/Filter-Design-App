@@ -117,7 +117,7 @@ class ZPlaneWidget(QWidget):
 
     def set_filter(self, filter_instance):
         self.filter = filter_instance
-        self.filter.subscribe(self.on_filter_update)
+        self.filter.subscribe(self.on_filter_update, self)
         self.zeros = [ZPlaneElement(complex(z.real, z.imag)) for z in filter_instance.zeros]
         self.poles = [ZPlaneElement(complex(p.real, p.imag)) for p in filter_instance.poles]
         self.conjugate_mode = False
@@ -139,6 +139,7 @@ class ZPlaneWidget(QWidget):
         self.add_elements_from_filter(pole_positions, 'pole')
 
         self._updating_from_filter = False
+        self.save_state()
         self.update()
 
     def notify_filter_change(self):
@@ -146,7 +147,7 @@ class ZPlaneWidget(QWidget):
             zeros = [z for z in self.zeros]
             poles = [p for p in self.poles]
 
-            self.filter.update_from_zplane(zeros, poles)
+            self.filter.update_from_zplane(zeros, poles, self)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

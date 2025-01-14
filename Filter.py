@@ -16,23 +16,29 @@ class Filter:
 
         self.subscribers = []  # Subscribers should include callback functions for: Magnitude plot, Phase plot, and elements list.
 
-    def subscribe(self, callback):
-        self.subscribers.append(callback)
+    def subscribe(self, callback, instance):
+        self.subscribers.append((callback, instance))
 
-    def notify_subscribers(self):
-        for callback in self.subscribers:
-            callback(self)
+    def notify_subscribers(self, sender=None):
+        for callback, instance in self.subscribers:
+            if sender is not instance:
+                callback(self)
 
-    def update_from_zplane(self, zeros, poles):
+    def update_from_zplane(self, zeros, poles, sender):
         """Update filter coefficients from z-plane widget"""
         self.zeros = [complex(z.position.real, z.position.imag) for z in zeros]
         self.poles = [complex(p.position.real, p.position.imag) for p in poles]
-        self.notify_subscribers()
+        self.notify_subscribers(sender)
         # self.zeros = [complex(z.position.real, z.position.imag)
         #               for z in zeros if not z.is_phantom]
         # self.poles = [complex(p.position.real, p.position.imag)
         #               for p in poles if not p.is_phantom]
         # self._normalize_gain()
+
+    def update_from_element_list(self, zeros, poles, sender):
+        self.zeros = zeros
+        self.poles = poles
+        self.notify_subscribers(sender)
 
     def _normalize_gain(self):
         """Normalize filter gain to 1 at DC (z = 1)"""

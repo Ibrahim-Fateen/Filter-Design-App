@@ -57,7 +57,7 @@ class FilterPlotsWidget(QWidget):
     def set_filter(self, filter_instance):
         """Connect to a filter instance"""
         self.filter = filter_instance
-        self.filter.subscribe(self.update_plots)
+        self.filter.subscribe(self.update_plots, self)
 
     def format_pi_ticks(self, x, pos):
         """Format tick labels in terms of multiples of π/4, with simplifications."""
