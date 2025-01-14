@@ -1,5 +1,6 @@
 import sys
 import numpy as np
+from math import gcd
 from PySide6.QtWidgets import QWidget, QHBoxLayout
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -59,22 +60,35 @@ class FilterPlotsWidget(QWidget):
         self.filter.subscribe(self.update_plots)
 
     def format_pi_ticks(self, x, pos):
-        """Format tick labels in terms of π"""
+        """Format tick labels in terms of multiples of π/4, with simplifications."""
+        multiple = 4  # Denominator for π multiples
         x_pi = x / np.pi
-        if x_pi == 0:
+        rounded_x_pi = round(x_pi * multiple) / multiple  # Round to nearest multiple of π/4
+
+        if rounded_x_pi == 0:
             return "0"
-        elif x_pi == 1:
+        elif rounded_x_pi == 1:
             return "π"
-        elif x_pi == -1:
+        elif rounded_x_pi == -1:
             return "-π"
-        elif x_pi.is_integer():
-            return f"{int(x_pi)}π"
+        elif rounded_x_pi.is_integer():
+            return f"{int(rounded_x_pi)}π"
         else:
-            if abs(x_pi) < 1:
-                frac = round(1 / x_pi)
-                return f"π/{frac}"
+            # Simplify the fraction
+            numerator = int(rounded_x_pi * multiple)
+            denominator = multiple
+            divisor = gcd(abs(numerator), denominator)  # Compute GCD for simplification
+            numerator //= divisor
+            denominator //= divisor
+
+            if denominator == 1:  # Case where the fraction simplifies to a whole number
+                return f"{numerator}π"
+            elif numerator == 1:  # Avoid "1π/denominator"
+                return f"π/{denominator}"
+            elif numerator == -1:  # Avoid "-1π/denominator"
+                return f"-π/{denominator}"
             else:
-                return f"{x_pi:.2f}π"
+                return f"{numerator}π/{denominator}"
 
     def update_plots(self, filter_instance=None):
         """Update both plots with new filter response"""
