@@ -2,8 +2,6 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QListWidget, QFrame
 )
-import cmath
-import numpy as np
 
 
 class ElementsListWidget(QWidget):
