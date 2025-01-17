@@ -97,7 +97,7 @@ def draw_direct_form_2(a_coeffs, b_coeffs, figsize=(12, 8)):
             ax.arrow(center_x + box_width / 2, y_pos + box_height / 2,
                      2.2, 0,
                      head_width=arrow_head_width, head_length=arrow_head_length)
-            ax.text(center_x + 1.5, y_pos + 0.3, f'{b_coeffs[i + 1]}', fontsize=12)
+            ax.text(center_x + 1.5, y_pos + box_height, f'{b_coeffs[i + 1]}', fontsize=12)
 
     # Draw main signal flow
     # Input
@@ -132,3 +132,13 @@ draw_direct_form_2(a2, b2)
 a4 = [0.4, 0.3, 0.2, 0.1]
 b4 = [1.0, 0.5, 0.3, 0.2, 0.1]
 draw_direct_form_2(a4, b4)
+
+# Example 3: Sixth-order filter
+a6 = [0.6, 0.5, 0.4, 0.3, 0.2, 0.1]
+b6 = [1.0, 0.6, 0.4, 0.3, 0.2, 0.1, 0.05]
+draw_direct_form_2(a6, b6)
+
+# Example 4: with zero coefficients in the middle
+a4_zero = [0.4, 0.0, 0.2, 0.1]
+b4_zero = [1.0, 0.5, 0.0, 0.2, 0]
+draw_direct_form_2(a4_zero, b4_zero)
