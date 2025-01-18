@@ -29,9 +29,42 @@ class FilterStructureVisualizer:
                 return len(numerator_coeffs) - 2, True, False
             return len(numerator_coeffs) - 1, False, False
 
+    def _setup_plot(self, width, height, title):
+        """Common plot setup logic"""
+        ax = self.current_ax
+        ax.set_xlim(-2, width)
+        ax.set_ylim(-2 * height - 1, 2)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_aspect('equal')
+
+        # Draw input arrow
+        ax.arrow(-1, 0, 2.5, 0,
+                 head_width=self.arrow_head_width, head_length=self.arrow_head_length)
+        ax.text(-1.5, 0.3, 'x(n)', fontsize=12)
+
+        plt.title(title)
+
     def _draw_direct_form_2_section(self, ax, denominator_coeffs, numerator_coeffs, offset_x=0):
         """Draw a single Direct Form II section at the specified x offset"""
-        n_delays = len(denominator_coeffs)
+        # Determine the number of delay elements needed
+        if len(denominator_coeffs) >= len(numerator_coeffs) - 1:
+            # is_denominator_max_order = True  # Denominator has higher order so it determines the number of delays
+            if denominator_coeffs[-1] == 0:  # Check if the last coefficient is zero so no need for the extra delay
+                n_delays = len(denominator_coeffs) - 1
+                # is_delay_minused = True
+            else:
+                n_delays = len(denominator_coeffs)
+                # is_delay_minused = False
+        else:
+            # is_denominator_max_order = False
+            if numerator_coeffs[-1] == 0:
+                n_delays = len(numerator_coeffs) - 2
+                # is_delay_minused = True
+            else:
+                n_delays = len(numerator_coeffs) - 1
+                # is_delay_minused = False
+
         center_x = self.center_x + offset_x
 
         # Draw delay elements
@@ -82,7 +115,7 @@ class FilterStructureVisualizer:
 
         # Draw output summing junctions
         for i in range(len(numerator_coeffs)):
-            if i == len(numerator_coeffs) and numerator_coeffs[-1] == 0:
+            if i == len(numerator_coeffs) - 1 and numerator_coeffs[-1] == 0:
                 continue
             y_pos = -2 * i
             output_sum = Circle((center_x + 3, y_pos), self.circle_radius, fill=False)
@@ -94,74 +127,54 @@ class FilterStructureVisualizer:
                  head_width=self.arrow_head_width, head_length=self.arrow_head_length)
         ax.text(center_x + 1.5, 0.3, f'{numerator_coeffs[0]}', fontsize=12)
 
+        return center_x + 3  # Return the x-coordinate of the output
+
+    def _draw_output_arrow(self, start_x):
+        """Draw the final output arrow and label"""
+        self.current_ax.arrow(start_x + 0.3, 0, 1.5, 0,
+                              head_width=self.arrow_head_width, head_length=self.arrow_head_length)
+        self.current_ax.text(start_x + 1.2, 0.3, 'y(n)', fontsize=12)
+
     def create_direct_form_2(self, denominator_coeffs, numerator_coeffs, figsize=(12, 8)):
         """Create Direct Form II structure from filter coefficients"""
-        fig, ax = self._create_figure(figsize)
+        self._create_figure(figsize)
 
-        # Calculate number of delays and whether to skip first delay
-        n_delays, skip_first, skip_last = self._calculate_delays(denominator_coeffs, numerator_coeffs)
+        # Calculate number of delays and plot dimensions
+        n_delays, _, _ = self._calculate_delays(denominator_coeffs, numerator_coeffs)
+        self._setup_plot(10, n_delays + 1, 'Direct Form II Filter Structure')
 
-        # Set plot limits
-        ax.set_xlim(-2, 10)
-        ax.set_ylim(-2 * (n_delays + 1) - 1, 2)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_aspect('equal')
+        # Draw the section and output
+        output_x = self._draw_direct_form_2_section(self.current_ax, denominator_coeffs, numerator_coeffs)
+        self._draw_output_arrow(output_x)
 
-        # Draw input arrow
-        ax.arrow(-1, 0, 2.5, 0,
-                 head_width=self.arrow_head_width, head_length=self.arrow_head_length)
-        ax.text(-1.5, 0.3, 'x(n)', fontsize=12)
-
-        # Draw each section
-        self._draw_direct_form_2_section(ax, denominator_coeffs, numerator_coeffs)
-
-        # Draw output arrow and label
-        last_x = self.center_x + 3
-        ax.arrow(last_x + 0.3, 0, 1.5, 0,
-                 head_width=self.arrow_head_width, head_length=self.arrow_head_length)
-        ax.text(last_x + 1.2, 0.3, 'y(n)', fontsize=12)
-
-        plt.title('Direct Form II Filter Structure')
-        return fig
+        return self.current_fig
 
     def create_cascade_form(self, sections, figsize=(20, 8)):
         """Create Cascade Form structure from multiple sections"""
-        fig, ax = self._create_figure(figsize)
+        self._create_figure(figsize)
 
-        # Calculate maximum number of delays for plot dimensions
+        # Calculate plot dimensions
         max_delays = max(len(d) for d, n in sections)
-
-        # Set plot limits
-        ax.set_xlim(-2, len(sections) * 8 + 2)
-        ax.set_ylim(-2 * (max_delays + 1) - 1, 2)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_aspect('equal')
-
-        # Draw input arrow
-        ax.arrow(-1, 0, 2.5, 0,
-                 head_width=self.arrow_head_width, head_length=self.arrow_head_length)
-        ax.text(-1.5, 0.3, 'x(n)', fontsize=12)
+        width = len(sections) * 8 + 2
+        self._setup_plot(width, max_delays + 1, 'Cascade Form Filter Structure')
 
         # Draw each section
+        last_x = None
         for i, (deno, num) in enumerate(sections):
-            self._draw_direct_form_2_section(ax, deno, num, offset_x=i * 8)
+            output_x = self._draw_direct_form_2_section(self.current_ax, deno, num, offset_x=i * 8)
+            last_x = output_x
 
             # Connection to next section
             if i < len(sections) - 1:
-                ax.arrow(self.center_x + 3 + self.circle_radius + i * 8, 0,
-                         2.2, 0, head_width=self.arrow_head_width,
-                         head_length=self.arrow_head_length)
+                self.current_ax.arrow(output_x + self.circle_radius, 0,
+                                      2.2, 0, head_width=self.arrow_head_width,
+                                      head_length=self.arrow_head_length)
 
-        # Final output arrow and label
-        last_x = self.center_x + 3 + self.circle_radius + (len(sections) - 1) * 8
-        ax.arrow(last_x, 0, 1.5, 0,
-                 head_width=self.arrow_head_width, head_length=self.arrow_head_length)
-        ax.text(last_x + 2, 0.3, 'y(n)', fontsize=12)
+        # Draw final output
+        if last_x is not None:
+            self._draw_output_arrow(last_x)
 
-        plt.title('Cascade Form Filter Structure')
-        return fig, ax
+        return self.current_fig, self.current_ax
 
     def show(self):
         """Display the current figure"""
@@ -169,6 +182,8 @@ class FilterStructureVisualizer:
             plt.show()
             self.current_fig = None
             self.current_ax = None
+        else:
+            print("No figure to display")
 
 
 # Example usage:
@@ -190,9 +205,30 @@ sections = [
 visualizer.create_cascade_form(sections)
 visualizer.show()
 
-# Example 3: Single Direct Form II with different coefficients
+# Example 3: nomirator longer than denominator
 deno2 = [0.5, 0.2, 0.1]
-num2 = [1.0, 0.3, 0.1]
+num2 = [1.0, 0.3, 0.1, 0.05, 0.44]
+visualizer.create_direct_form_2(deno2, num2)
+plt.title('Direct Form II dfgsdfure')
+visualizer.show()
+
+# Example 4: denominator longer than numerator
+deno3 = [0.5, 0.2, 0.1, 0.05, 0.44]
+num3 = [1.0, 0.3, 0.1]
+visualizer.create_direct_form_2(deno3, num3)
+plt.title('Direct Form II Filter Structure')
+visualizer.show()
+
+# Example 4: denominator longer than numerator with zero end
+deno3 = [0.5, 0.2, 0.1, 0.05, 0.44, 0]
+num3 = [1.0, 0.3, 0.1]
+visualizer.create_direct_form_2(deno3, num3)
+plt.title('Direct Form II Filter Structure')
+visualizer.show()
+
+# Example 3: nomirator longer than denominator with zero end
+deno2 = [0.5, 0.2, 0.1]
+num2 = [1.0, 0.3, 0.1, 0.05, 0.44, 0]
 visualizer.create_direct_form_2(deno2, num2)
 plt.title('Direct Form II dfgsdfure')
 visualizer.show()
