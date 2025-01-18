@@ -232,3 +232,12 @@ num2 = [1.0, 0.3, 0.1, 0.05, 0.44, 0]
 visualizer.create_direct_form_2(deno2, num2)
 plt.title('Direct Form II dfgsdfure')
 visualizer.show()
+
+# Example: Cascade Form
+sections = [
+    ([1.0, -0.5], [0.5, 0.5]),  # First section coefficients
+    ([1.0, -0.3], [0.6, 0.4])   # Second section coefficients
+]
+visualizer.create_cascade_form(sections)
+plt.title('Casc 3')
+visualizer.show()
