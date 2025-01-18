@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 from PySide6.QtWidgets import QFileDialog, QApplication, QPushButton, QVBoxLayout, QWidget, QComboBox
+from filter_visualizer import FilterStructureVisualizer
 
+visualizer = FilterStructureVisualizer()
 
 def export_c_code(coefficients, structure="direct_form_ii"):
     file_name, _ = QFileDialog.getSaveFileName(None, "Save C Code", "", "C Files (*.c)")
@@ -90,37 +92,25 @@ def export_filter_diagram(coefficients, structure="direct_form_ii"):
     print(f"Filter diagram saved to {file_name}")
 
 def plot_direct_form_ii(coefficients, file_name):
-    fig, ax = plt.subplots(figsize=(10, 5))
-    ax.text(0.1, 0.5, "Input", fontsize=12)
-    ax.text(0.4, 0.5, f"b0: {coefficients['numerator'][0]}", fontsize=12)
-    ax.text(0.55, 0.5, f"b1: {coefficients['numerator'][1]}", fontsize=12)
-    ax.text(0.7, 0.5, f"a1: {coefficients['denominator'][1]}", fontsize=12)
-    ax.arrow(0.2, 0.5, 0.15, 0, head_width=0.02, head_length=0.02)
-    ax.arrow(0.5, 0.5, 0.15, 0, head_width=0.02, head_length=0.02)
-    ax.set_axis_off()
+    visualizer.create_direct_form_2(coefficients["denominator"], coefficients["numerator"])
     plt.savefig(file_name)
     plt.close()
 
 def plot_cascade(coefficients, file_name):
-    fig, ax = plt.subplots(figsize=(12, 6))
-    sections = coefficients.get("sections", [])
-    for i, section in enumerate(sections):
-        ax.text(0.1 + i * 0.3, 0.5, f"Biquad {i+1}\n b: {section['b']} \n a: {section['a']}",
-                fontsize=10, bbox=dict(boxstyle="round", facecolor="wheat"))
-        if i < len(sections) - 1:
-            ax.arrow(0.1 + i * 0.3 + 0.15, 0.5, 0.15, 0, head_width=0.02, head_length=0.02)
-    ax.set_axis_off()
+    visualizer.create_cascade_form(coefficients["sections"])
     plt.savefig(file_name)
     plt.close()
 
 # test code
-cascade_coefficients = {
-    "sections": [
-        {"b": [1, -1, 0.5], "a": [1, -0.5, 0.25]},
-        {"b": [1, -0.8, 0.3], "a": [1, -0.4, 0.1]}
-    ]
+cascade_coefficients = {"sections" : [
+    ([0.2, 0.1], [1.0, 0.4, 0.2]),  # First section
+    ([0.1], [1.0, 0.3]),  # Second section
+    ([0.15], [1.0, 0.25])  # Third section
+]
 }
+
 direct_form_coeff = {"numerator": [1, -1], "denominator": [1, -0.5]}
+
 app = QApplication([])
 window = QWidget()
 layout = QVBoxLayout()
@@ -130,7 +120,7 @@ export_filter_diagram_combobox = QComboBox()
 export_filter_diagram_combobox.addItems(["cascade", "direct_form_ii"])
 # add button to export the filter diagram
 export_filter_diagram_button = QPushButton("Export Filter Diagram")
-export_filter_diagram_button.clicked.connect(lambda: export_filter_diagram(cascade_coefficients, export_filter_diagram_combobox.currentText()))
+export_filter_diagram_button.clicked.connect(lambda: export_filter_diagram(direct_form_coeff, export_filter_diagram_combobox.currentText()))
 export_c_code_button.clicked.connect(lambda: export_c_code({"numerator": [1, -1], "denominator": [1, -0.5]}))
 
 layout.addWidget(export_filter_diagram_combobox)
