@@ -3,10 +3,10 @@ from PySide6.QtWidgets import QFileDialog, QApplication, QPushButton, QVBoxLayou
 from datetime import datetime
 import os
 
-from filter_visualizer import FilterStructureVisualizer
+from FilterRealizer import FilterRealizer
 from filter_code_generator import FilterCodeGenerator
 
-visualizer = FilterStructureVisualizer()
+visualizer = FilterRealizer()
 code_generator = FilterCodeGenerator()
 
 
@@ -81,12 +81,12 @@ def export_filter_diagram(coefficients, structure="direct_form_ii"):
     print(f"Filter diagram saved to {file_name}")
 
 def plot_direct_form_ii(coefficients, file_name):
-    visualizer.create_direct_form_2(coefficients["denominator"], coefficients["numerator"])
+    visualizer.draw_direct_form_2(coefficients["denominator"], coefficients["numerator"])
     plt.savefig(file_name)
     plt.close()
 
 def plot_cascade(coefficients, file_name):
-    visualizer.create_cascade_form(coefficients["sections"])
+    visualizer.draw_cascade_form(coefficients["sections"])
     plt.savefig(file_name)
     plt.close()
 

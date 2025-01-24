@@ -29,6 +29,7 @@ class Filter:
         self.zeros = [complex(z.position.real, z.position.imag) for z in zeros]
         self.poles = [complex(p.position.real, p.position.imag) for p in poles]
         self.notify_subscribers(sender)
+        self._normalize_gain()
         # self.zeros = [complex(z.position.real, z.position.imag)
         #               for z in zeros if not z.is_phantom]
         # self.poles = [complex(p.position.real, p.position.imag)
@@ -39,6 +40,7 @@ class Filter:
         self.zeros = zeros
         self.poles = poles
         self.notify_subscribers(sender)
+        self._normalize_gain()
 
     def _normalize_gain(self):
         """Normalize filter gain to 1 at DC (z = 1)"""
@@ -51,14 +53,16 @@ class Filter:
         den = np.prod([1 - p for p in self.poles]) if self.poles else 1
 
         # Set gain to normalize DC response to 1
-        self.gain = abs(den / num) if den != 0 else 1.0
+        self.gain = abs(num / den) if den != 0 else 1.0
 
     def get_transfer_function(self):
         """Get filter coefficients in transfer function form"""
         # Convert zeros and poles to polynomials
-        b = np.poly(self.zeros) * self.gain if self.zeros else [self.gain]
-        a = np.poly(self.poles) if self.poles else [1.0]
-        return b, a
+        return signal.zpk2tf(self.zeros, self.poles, self.gain)
+
+    def get_cascade_form(self):
+        """Get filter coefficients in cascade form"""
+        return signal.zpk2sos(self.zeros, self.poles, self.gain)
 
     def get_frequency_response(self, num_points=1024):
         """Calculate frequency response"""
