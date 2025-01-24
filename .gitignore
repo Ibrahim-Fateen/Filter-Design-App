@@ -2,3 +2,5 @@
 logs/
 __pycache__/
 .DS_Store
+bodaVenv/
+Task6 Realtime Digital Filter Design.pdf
