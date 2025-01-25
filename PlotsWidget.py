@@ -6,13 +6,19 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.ticker import MultipleLocator, FuncFormatter
 
+from logger_config import setup_logger
+
+logger = setup_logger(__name__)
+
 
 class FilterPlotsWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(800, 400)
         self.setup_ui()
-        self.filter = None
+        self.w = None
+        self.magnitude_db = None
+        self.phase = None
 
     def setup_ui(self):
         # Create main layout
@@ -56,8 +62,7 @@ class FilterPlotsWidget(QWidget):
 
     def set_filter(self, filter_instance):
         """Connect to a filter instance"""
-        self.filter = filter_instance
-        self.filter.subscribe(self.update_plots, self)
+        filter_instance.subscribe(self.update_plots, self)
 
     def format_pi_ticks(self, x, pos):
         """Format tick labels in terms of multiples of π/4, with simplifications."""
@@ -92,32 +97,27 @@ class FilterPlotsWidget(QWidget):
 
     def update_plots(self, filter_instance=None):
         """Update both plots with new filter response"""
-        self.filter = filter_instance
-        if not self.filter:
-            return
 
         # Get frequency response
-        w, magnitude_db, phase = self.filter.get_frequency_response()
-
-        phase = np.deg2rad(phase)
+        self.w, self.magnitude_db, self.phase = filter_instance.get_frequency_response()
 
         self.mag_ax.clear()
-        self.mag_ax.plot(w, magnitude_db)
+        self.mag_ax.plot(self.w, self.magnitude_db)
         self.mag_ax.grid(True)
         self.mag_ax.set_title('Magnitude Response')
         self.mag_ax.set_xlabel('ω (rad/sample)')
         self.mag_ax.set_ylabel('Magnitude (dB)')
 
         # Set reasonable y-axis limits for magnitude
-        min_mag = max(min(magnitude_db), -100)  # Limit to -100 dB
-        self.mag_ax.set_ylim(min_mag - 10, max(magnitude_db) + 10)
+        min_mag = max(min(self.magnitude_db), -100)  # Limit to -100 dB
+        self.mag_ax.set_ylim(min_mag - 10, max(self.magnitude_db) + 10)
 
-        # Add horizontal line at -3dB for reference
-        self.mag_ax.axhline(y=-3, color='r', linestyle='--', alpha=0.5)
-        self.mag_ax.text(w[1], -3, '-3 dB', verticalalignment='bottom')
+        # # Add horizontal line at -3dB for reference
+        # self.mag_ax.axhline(y=-3, color='r', linestyle='--', alpha=0.5)
+        # self.mag_ax.text(self.w[1], -3, '-3 dB', verticalalignment='bottom')
 
         self.phase_ax.clear()
-        self.phase_ax.plot(w, phase)
+        self.phase_ax.plot(self.w, self.phase)
         self.phase_ax.grid(True)
         self.phase_ax.set_title('Phase Response')
         self.phase_ax.set_xlabel('ω (rad/sample)')
@@ -162,20 +162,21 @@ class FilterPlotsWidget(QWidget):
                 self.phase_vline.remove()
 
             # Add new vertical lines at cursor x-position
-            self.mag_vline = self.mag_ax.axvline(x=event.xdata, color='k',
-                                                 linestyle=':', alpha=0.5)
-            self.phase_vline = self.phase_ax.axvline(x=event.xdata, color='k',
-                                                     linestyle=':', alpha=0.5)
+            self.mag_vline = self.mag_ax.axvline(x=event.xdata, color='k', linestyle=':', alpha=0.5)
+            self.phase_vline = self.phase_ax.axvline(x=event.xdata, color='k', linestyle=':', alpha=0.5)
 
             # Get nearest frequency response values
-            if self.filter:
-                w, mag, phase = self.filter.get_frequency_response()
-                idx = np.abs(w - event.xdata).argmin()
+            if self.w is not None:
+                idx = np.abs(self.w - event.xdata).argmin()
 
                 # Update titles with current values
                 w_str = f'{event.xdata / np.pi:.2f}π'
-                self.mag_ax.set_title(f'Magnitude Response\nω = {w_str}: {mag[idx]:.1f} dB')
-                self.phase_ax.set_title(f'Phase Response\nω = {w_str}: {phase[idx]:.2f} rad')
+                logger.debug(f'w_str: {w_str}')
+                logger.debug(f'idx: {idx}')
+                logger.debug(f'mag: {self.magnitude_db[idx]}')
+                logger.debug(f'phase: {self.phase[idx]}')
+                self.mag_ax.set_title(f'Magnitude Response\nω = {w_str}: {self.magnitude_db[idx]:.1f} dB')
+                self.phase_ax.set_title(f'Phase Response\nω = {w_str}: {self.phase[idx]:.2f} rad')
 
             self.canvas.draw()
 
@@ -193,13 +194,12 @@ if __name__ == '__main__':
 
     # Create test filter
     filter = Filter()
-    filter.zeros = [-1 + 1j, -1 - 1j]
-    filter.poles = [0.5 + 0.5j, 0.5 - 0.5j]
+    filter.zeros = [1]
 
     # Create and show plots widget
     plots = FilterPlotsWidget()
     plots.set_filter(filter)
-    plots.update_plots()
+    plots.update_plots(filter)
     plots.show()
 
     sys.exit(app.exec())

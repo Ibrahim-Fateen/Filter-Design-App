@@ -29,7 +29,7 @@ class Filter:
         self.zeros = [complex(z.position.real, z.position.imag) for z in zeros]
         self.poles = [complex(p.position.real, p.position.imag) for p in poles]
         self.notify_subscribers(sender)
-        self._normalize_gain()
+        # self._normalize_gain()
         # self.zeros = [complex(z.position.real, z.position.imag)
         #               for z in zeros if not z.is_phantom]
         # self.poles = [complex(p.position.real, p.position.imag)
@@ -40,7 +40,7 @@ class Filter:
         self.zeros = zeros
         self.poles = poles
         self.notify_subscribers(sender)
-        self._normalize_gain()
+        # self._normalize_gain()
 
     def _normalize_gain(self):
         """Normalize filter gain to 1 at DC (z = 1)"""
@@ -62,17 +62,23 @@ class Filter:
 
     def get_cascade_form(self):
         """Get filter coefficients in cascade form"""
-        return signal.zpk2sos(self.zeros, self.poles, self.gain)
+        try:
+            sections_tensor = signal.zpk2sos(self.zeros, self.poles, self.gain)
+        except ValueError:
+            raise ValueError("Filter must have a conjugate pair for each complex element to convert to cascade form")
+
+        return sections_tensor
 
     def get_frequency_response(self, num_points=1024):
         """Calculate frequency response"""
         w, h = signal.freqz(*self.get_transfer_function(), worN=num_points)
 
         # frequencies = w * self.sample_rate / (2 * np.pi)
-        magnitude_db = 20 * np.log10(np.abs(h))
-        phase_deg = np.angle(h, deg=True)
+        _epsilon = 1e-12
+        magnitude_db = 20 * np.log10(np.abs(h) + _epsilon)
+        phase_rad = np.angle(h)
 
-        return w, magnitude_db, phase_deg
+        return w, magnitude_db, phase_rad
 
     def get_impulse_response(self, num_points=100):
         """Calculate impulse response"""
