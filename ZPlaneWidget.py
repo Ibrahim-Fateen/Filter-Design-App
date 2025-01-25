@@ -223,7 +223,8 @@ class ZPlaneWidget(QWidget):
     def draw_guidelines(self, painter, center, radius):
         # Draw radius circles
         for r in np.arange(0.2, 10.2, 0.2):  # Extended to 10
-            if r > 2.0 and r % 1 != 0:  # Skip non-integer circles beyond 2
+            # Show all circles up to r=2, then only show integer radii
+            if r > 2.0 and r % 1 >= 0.1:
                 continue
             
             color = QColor(200, 200, 200) if abs(r - 1.0) > 0.01 else QColor(100, 100, 100)
@@ -239,8 +240,18 @@ class ZPlaneWidget(QWidget):
             painter.setPen(QPen(color, 1))
             painter.drawEllipse(center, scaled_radius, scaled_radius)
 
-            # Draw radius value
-            if r <= 2.0 or r.is_integer():  # Show all labels up to 2, then only integers
+            # Adjust label visibility based on zoom level
+            if self.zoom_level < 0.3:
+                # When zoomed out a lot, only show even integer radii
+                should_show_label = r.is_integer() and int(r) % 2 == 0
+            elif self.zoom_level < 0.6:
+                # When moderately zoomed out, show all integer radii
+                should_show_label = r.is_integer()
+            else:
+                # When zoomed in, show all labels up to 2, then only integers
+                should_show_label = r <= 2.0 or r.is_integer()
+
+            if should_show_label:
                 painter.drawText(
                     center.x() + scaled_radius + 5,
                     center.y() - 5,
