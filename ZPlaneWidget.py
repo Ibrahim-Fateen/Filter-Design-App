@@ -38,6 +38,9 @@ class ZPlaneWidget(QWidget):
         self.setMouseTracking(True)
         self.zeros = []
         self.poles = []
+        self.zoom_level = 1.0
+        self.min_zoom = 0.1
+        self.max_zoom = 4.0
         self.dragging_item = None
         self.dragging_type = None
         self.add_mode = None
@@ -182,11 +185,12 @@ class ZPlaneWidget(QWidget):
 
         # Draw unit circle and main axes with higher contrast
         painter.setPen(QPen(QColor(100, 100, 100), 2))
-        painter.drawEllipse(center, radius, radius)
-        painter.drawLine(int(center.x() - radius * 2), int(center.y()),
-                         int(center.x() + radius * 2), int(center.y()))
-        painter.drawLine(int(center.x()), int(center.y() - radius * 2),
-                         int(center.x()), int(center.y() + radius * 2))
+        scaled_radius = radius * self.zoom_level
+        painter.drawEllipse(center, scaled_radius, scaled_radius)
+        painter.drawLine(int(center.x() - scaled_radius * 15), int(center.y()),
+                        int(center.x() + scaled_radius * 15), int(center.y()))
+        painter.drawLine(int(center.x()), int(center.y() - scaled_radius * 15),
+                        int(center.x()), int(center.y() + scaled_radius * 15))
 
         # Draw existing elements
         self.draw_elements(painter, self.zeros, is_pole=False)
@@ -218,22 +222,27 @@ class ZPlaneWidget(QWidget):
 
     def draw_guidelines(self, painter, center, radius):
         # Draw radius circles
-        for r in np.arange(0.2, 2.1, 0.2):
+        for r in np.arange(0.2, 10.2, 0.2):  # Extended to 10
+            if r > 2.0 and r % 1 != 0:  # Skip non-integer circles beyond 2
+                continue
+            
             color = QColor(200, 200, 200) if abs(r - 1.0) > 0.01 else QColor(100, 100, 100)
             if self.hover_pos:
                 hover_r = np.sqrt(
-                    ((self.hover_pos.x() - center.x()) / radius) ** 2 +
-                    ((self.hover_pos.y() - center.y()) / radius) ** 2
+                    ((self.hover_pos.x() - center.x()) / (radius * self.zoom_level)) ** 2 +
+                    ((self.hover_pos.y() - center.y()) / (radius * self.zoom_level)) ** 2
                 )
                 if abs(hover_r - r) < 0.1:
                     color = QColor(100, 100, 200)
+            
+            scaled_radius = r * radius * self.zoom_level
             painter.setPen(QPen(color, 1))
-            painter.drawEllipse(center, r * radius, r * radius)
+            painter.drawEllipse(center, scaled_radius, scaled_radius)
 
             # Draw radius value
-            if abs(r - int(r)) < 0.01:  # Only label whole numbers
+            if r <= 2.0 or r.is_integer():  # Show all labels up to 2, then only integers
                 painter.drawText(
-                    center.x() + r * radius + 5,
+                    center.x() + scaled_radius + 5,
                     center.y() - 5,
                     f"{r:.1f}"
                 )
@@ -435,6 +444,15 @@ class ZPlaneWidget(QWidget):
         self.notify_filter_change()
         self.update()
 
+    def wheelEvent(self, event):
+        """Handle mouse wheel for zooming"""
+        zoom_factor = 1.1
+        if event.angleDelta().y() > 0:
+            self.zoom_level = min(self.zoom_level * zoom_factor, self.max_zoom)
+        else:
+            self.zoom_level = max(self.zoom_level / zoom_factor, self.min_zoom)
+        self.update()
+
     def delete_element(self, element, element_type):
         """Delete both an element and its conjugate pair"""
         if element_type == 'zero':
@@ -504,15 +522,15 @@ class ZPlaneWidget(QWidget):
     def complex_to_point(self, z):
         center = QPointF(self.width() / 2, self.height() / 2)
         radius = min(self.width(), self.height()) * 0.4
-        x = center.x() + z.real * radius
-        y = center.y() - z.imag * radius
+        x = center.x() + z.real * radius * self.zoom_level
+        y = center.y() - z.imag * radius * self.zoom_level
         return QPointF(x, y)
 
     def point_to_complex(self, point):
         center = QPointF(self.width() / 2, self.height() / 2)
         radius = min(self.width(), self.height()) * 0.4
-        x = (point.x() - center.x()) / radius
-        y = -(point.y() - center.y()) / radius
+        x = (point.x() - center.x()) / (radius * self.zoom_level)
+        y = -(point.y() - center.y()) / (radius * self.zoom_level)
         return complex(x, y)
 
     def start_add_mode(self, mode):
