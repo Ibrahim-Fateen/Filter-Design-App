@@ -1,9 +1,16 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget, QFrame, QMessageBox, QLineEdit, QDialog, QDialogButtonBox
+import numpy as np
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QDialog, QDialogButtonBox
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+from scipy import signal
+from PlotsWidget import FilterPlotsWidget
 
 class AllPassFiltersListWidget(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, filter_instance=None, phase_response_instance=None):
         super().__init__(parent)
-        self.filter = None
+        self.filter = filter_instance
+        self.phase_response = phase_response_instance
         self.setup_ui()
         self.setup_connections()
 
@@ -62,7 +69,7 @@ class AllPassFiltersListWidget(QWidget):
         self.notify_filter_change()
 
     def show_add_apf_dialog(self):
-        dialog = AddAllPassFilterDialog(self)
+        dialog = AddAllPassFilterDialog(self, self.filter, self.phase_response)
         if dialog.exec():
             a = dialog.get_coefficient()
             theta = dialog.get_angle()
@@ -71,8 +78,15 @@ class AllPassFiltersListWidget(QWidget):
                 self.notify_filter_change()
 
     def delete_apf(self, item):
+        """Delete the selected all-pass filter from the list and the filter instance"""
+        item_text = item.text()
+        a, theta = self.parse_apf(item_text)
+        if a is not None and theta is not None:
+            # Remove the all-pass filter from the filter instance
+            self.filter.all_pass_filters = [apf for apf in self.filter.all_pass_filters if
+                                            not (apf['a'] == a and apf['theta'] == theta)]
+            self.filter.notify_subscribers(self)
         self.apf_list.takeItem(self.apf_list.row(item))
-        self.notify_filter_change()
 
     def parse_apf(self, text):
         """Parse all-pass filter from string"""
@@ -84,22 +98,28 @@ class AllPassFiltersListWidget(QWidget):
         except (ValueError, IndexError):
             return None, None
 
+
+
 class AddAllPassFilterDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, filter_instance=None, phase_response_instance=None):
         super().__init__(parent)
         self.setWindowTitle("Add All-Pass Filter")
+        self.filter_instance = filter_instance
+        self.phase_response_instance = phase_response_instance
 
         # Input the coefficient (a)
         self.coefficient_label = QLabel("Enter coefficient (a):")
         self.coefficient_input = QLineEdit()
+        self.coefficient_input.textChanged.connect(self.update_plot)
 
         # Input the angle (theta)
         self.angle_label = QLabel("Enter angle (theta):")
         self.angle_input = QLineEdit()
+        self.angle_input.textChanged.connect(self.update_plot)
 
         # Add buttons
         self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.button_box.accepted.connect(self.accept)
+        self.button_box.accepted.connect(self.add_all_pass_filter_to_channel)
         self.button_box.rejected.connect(self.reject)
 
         # Layout setup
@@ -109,8 +129,19 @@ class AddAllPassFilterDialog(QDialog):
         input_layout.addWidget(self.angle_label)
         input_layout.addWidget(self.angle_input)
 
+        # Create plot
+        self.figure = Figure(figsize=(5, 4))
+        self.canvas = FigureCanvas(self.figure)
+        self.ax = self.figure.add_subplot(111)
+        self.ax.set_title('Phase Response')
+        self.ax.set_xlabel('ω (rad/sample)')
+        self.ax.set_ylabel('Phase (rad)')
+        self.ax.grid(True)
+
+        # Main layout
         layout = QVBoxLayout()
         layout.addLayout(input_layout)
+        layout.addWidget(self.canvas)
         layout.addWidget(self.button_box)
         self.setLayout(layout)
 
@@ -125,3 +156,58 @@ class AddAllPassFilterDialog(QDialog):
             return float(self.angle_input.text())
         except ValueError:
             return None
+
+    def add_all_pass_filter_to_channel(self):
+        a = self.get_coefficient()
+        theta = self.get_angle()
+        if a is not None and theta is not None:
+            # Add the all-pass filter to the filter instance
+            zero = 1 / a
+            pole = a
+            angle_rad = np.deg2rad(theta)
+            zero = zero * np.exp(1j * angle_rad)
+            pole = pole * np.exp(1j * angle_rad)
+            self.filter_instance.add_zero(zero)
+            self.filter_instance.add_pole(pole)
+            self.filter_instance.notify_subscribers(self)
+            self.accept()
+
+    def update_plot(self):
+        coefficient = self.get_coefficient()
+        angle = self.get_angle()
+        if coefficient is None or angle is None:
+            return
+
+        # Calculate the zero and pole
+        zero = 1 / coefficient
+        pole = coefficient
+
+        # Adjust the zero and pole positions using the angle
+        angle_rad = np.deg2rad(angle)
+        zero = zero * np.exp(1j * angle_rad)
+        pole = pole * np.exp(1j * angle_rad)
+
+        # Calculate the phase response of the inputted filter
+        w, h = signal.freqz([zero], [pole], worN=1024)
+        phase = np.angle(h)
+
+        # Clear the plot
+        self.ax.clear()
+        self.ax.set_title('Phase Response')
+        self.ax.set_xlabel('ω (rad/sample)')
+        self.ax.set_ylabel('Phase (rad)')
+        self.ax.grid(True)
+
+        # Plot the phase response of the inputted filter
+        self.ax.plot(w, phase, label='Inputted Filter', color='blue')
+
+        # Plot the final response of the overall filter
+        if self.filter_instance:
+            final_w, magnitude_db, final_h = self.filter_instance.get_frequency_response()
+            final_phase = np.angle(final_h)
+            self.ax.plot(final_w, final_phase, label='Final Response', color='red')
+
+        self.ax.legend()
+        self.canvas.draw()
+
+
