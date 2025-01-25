@@ -1,10 +1,9 @@
 import matplotlib.pyplot as plt
 from PySide6.QtWidgets import QFileDialog, QApplication, QPushButton, QVBoxLayout, QWidget, QComboBox
 from datetime import datetime
-import os
 
 from FilterRealizer import FilterRealizer
-from filter_code_generator import FilterCodeGenerator
+from FilterCodeGenerator import FilterCodeGenerator
 
 visualizer = FilterRealizer()
 code_generator = FilterCodeGenerator()
