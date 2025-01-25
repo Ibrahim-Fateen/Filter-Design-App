@@ -16,6 +16,16 @@ class Filter:
 
         self.subscribers = []  # Subscribers should include callback functions for: Magnitude plot, Phase plot, and elements list.
 
+    def add_zero(self, zero):
+        """Add a zero to the filter and notify subscribers."""
+        self.zeros.append(zero)
+        self.notify_subscribers()
+
+    def add_pole(self, pole):
+        """Add a pole to the filter and notify subscribers."""
+        self.poles.append(pole)
+        self.notify_subscribers()
+
     def subscribe(self, callback, instance):
         self.subscribers.append((callback, instance))
 
@@ -26,15 +36,30 @@ class Filter:
 
     def update_from_zplane(self, zeros, poles, sender):
         """Update filter coefficients from z-plane widget"""
-        self.zeros = [complex(z.position.real, z.position.imag) for z in zeros]
-        self.poles = [complex(p.position.real, p.position.imag) for p in poles]
+        new_zeros = [complex(z.position.real, z.position.imag) for z in zeros]
+        new_poles = [complex(p.position.real, p.position.imag) for p in poles]
+
+        # Handle zero removal along with its conjugate
+        for z in self.zeros:
+            if z not in new_zeros:
+                conjugate = complex(z.real, -z.imag)
+                if conjugate in self.zeros:
+                    self.zeros.remove(conjugate)
+
+        # Handle pole removal along with its conjugate
+        for p in self.poles:
+            if p not in new_poles:
+                conjugate = complex(p.real, -p.imag)
+                if conjugate in self.poles:
+                    self.poles.remove(conjugate)
+
+        # Update zeros and poles
+        self.zeros = new_zeros
+        self.poles = new_poles
+
+        # Notify subscribers
         self.notify_subscribers(sender)
-        # self._normalize_gain()
-        # self.zeros = [complex(z.position.real, z.position.imag)
-        #               for z in zeros if not z.is_phantom]
-        # self.poles = [complex(p.position.real, p.position.imag)
-        #               for p in poles if not p.is_phantom]
-        # self._normalize_gain()
+
 
     def update_from_element_list(self, zeros, poles, sender):
         self.zeros = zeros

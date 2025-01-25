@@ -1,5 +1,6 @@
 import numpy as np
-from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QFileDialog, QMessageBox
+from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QFileDialog, QMessageBox, QDialog, \
+    QLabel, QLineEdit, QHBoxLayout, QDialogButtonBox
 
 from Filter import Filter
 from PlotsWidget import FilterPlotsWidget
@@ -7,6 +8,47 @@ from ZPlaneWidget import ZPlaneWidget
 from ElementsListWidget import ElementsListWidget
 from FilterVisualizer import FilterVisualizer
 from FilterCodeGenerator import FilterCodeGenerator
+
+
+class AllPassFilterDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add All-Pass Filter")
+
+        #input the (a)
+        self.coefficient_label = QLabel("Enter coefficient (a):")
+        self.coefficient_input = QLineEdit()
+
+        #input the angle (theta)
+        self.angle_label = QLabel("Enter angle (theta):")
+        self.angle_input = QLineEdit()
+
+        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+
+        layout = QVBoxLayout()
+        input_layout = QHBoxLayout()
+        input_layout.addWidget(self.coefficient_label)
+        input_layout.addWidget(self.coefficient_input)
+        input_layout.addWidget(self.angle_label)
+        input_layout.addWidget(self.angle_input)
+
+        layout.addLayout(input_layout)
+        layout.addWidget(self.buttons)
+        self.setLayout(layout)
+
+    def get_coefficient(self):
+        try:
+            return float(self.coefficient_input.text())
+        except ValueError:
+            return None
+
+    def get_angle(self):
+        try:
+            return float(self.angle_input.text())
+        except ValueError:
+            return None
 
 
 class FilterExportWidget(QWidget):
@@ -74,7 +116,7 @@ class FilterExportWidget(QWidget):
             "",
             "C Source Files (*.c);;All Files (*.*)"
         )
-        
+
         if file_path:
             try:
                 header_path, source_path = self.code_generator.export_c_code(file_path)
@@ -108,8 +150,31 @@ class FilterExportWidget(QWidget):
             )
 
     def show_all_pass_dialog(self):
-        pass
+        dialog = AllPassFilterDialog(self)
+        if dialog.exec():
+            coefficient = dialog.get_coefficient()
+            angle = dialog.get_angle()
+            if coefficient is None or angle is None:
+                QMessageBox.critical(self, "Error", "Invalid coefficient value or angle!")
+                return
 
+            # Calculate the zero and pole
+            zero = 1 / coefficient
+            pole = coefficient
+
+            # Adjust the zero and pole positions using the angle
+            angle_rad = np.deg2rad(angle)
+            zero = zero * np.exp(1j * angle_rad)
+            pole = pole * np.exp(1j * angle_rad)
+
+            # Add to filter
+            self.filter.add_zero(zero)
+            self.filter.add_pole(pole)
+
+            # Update visualizations
+            self.filter.notify_subscribers(self)
+            QMessageBox.information(self, "Success", "All-pass filter added successfully!")
+            return
 
 if __name__ == '__main__':
     app = QApplication()
