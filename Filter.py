@@ -55,19 +55,43 @@ class Filter:
         # Set gain to normalize DC response to 1
         self.gain = abs(num / den) if den != 0 else 1.0
 
-    def get_transfer_function(self):
+    def get_transfer_function(self, caller=None):
         """Get filter coefficients in transfer function form"""
         # Convert zeros and poles to polynomials
+        if type(caller).__name__ in ['FilterCodeGenerator', 'FilterVisualizer']:
+            # make sure filter is realizable
+            if not self._is_realizable():
+                raise ValueError("Filter must have a conjugate pair for each complex element to convert to transfer "
+                                 "function form")
         return signal.zpk2tf(self.zeros, self.poles, self.gain)
+
+    def _is_realizable(self):
+        # Auto add conjugates for elements without a conjugate
+        # If a complex element is present, it must have a conjugate
+        for z in self.zeros:
+            if z.imag != 0 and complex(z.real, -z.imag) not in self.zeros:
+                return False
+        for p in self.poles:
+            if p.imag != 0 and complex(p.real, -p.imag) not in self.poles:
+                return False
+        return True
+
+    def auto_realize_filter(self):
+        # Auto add conjugates for elements without a conjugate
+        # If a complex element is present, it must have a conjugate
+        for z in self.zeros:
+            if z.imag != 0 and complex(z.real, -z.imag) not in self.zeros:
+                self.zeros.append(complex(z.real, -z.imag))
+        for p in self.poles:
+            if p.imag != 0 and complex(p.real, -p.imag) not in self.poles:
+                self.poles.append(complex(p.real, -p.imag))
+        self.notify_subscribers()
 
     def get_cascade_form(self):
         """Get filter coefficients in cascade form"""
-        try:
-            sections_tensor = signal.zpk2sos(self.zeros, self.poles, self.gain)
-        except ValueError:
+        if not self._is_realizable():
             raise ValueError("Filter must have a conjugate pair for each complex element to convert to cascade form")
-
-        return sections_tensor
+        return signal.zpk2sos(self.zeros, self.poles, self.gain)
 
     def get_frequency_response(self, num_points=1024):
         """Calculate frequency response"""

@@ -1,9 +1,8 @@
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Rectangle
-from sympy import denom
 
 
-class FilterRealizer:
+class FilterVisualizer:
     def __init__(self, filter=None):
         self.circle_radius = 0.3
         self.box_width = 0.6
@@ -149,7 +148,7 @@ class FilterRealizer:
         self._create_figure(figsize)
 
         # Calculate number of delays and plot dimensions
-        tf = self.filter.get_transfer_function()
+        tf = self.filter.get_transfer_function(self)
         # Remove leading 1 from denominator
         tf = (tf[0], tf[1][1:])
         n_delays = self._calculate_delays(tf)

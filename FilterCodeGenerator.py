@@ -2,7 +2,7 @@ from datetime import datetime
 
 
 class FilterCodeGenerator:
-    def __init__(self, transfer_function):
+    def __init__(self):
         self.header_template = """
 /* Auto-generated filter implementation
  * Generated on: {timestamp}
@@ -25,15 +25,14 @@ class FilterCodeGenerator:
 
 {function_definitions}
 """
-        self.tf = transfer_function
         self.header_path = None
         self.source_path = None
 
-    def export_c_code(self, file_path, name="filter"):
+    def export_c_code(self, file_path, tf, name="filter"):
         base_name = file_path.rsplit('.', 1)[0]
         base_filename = base_name.split('/')[-1]
 
-        code_parts = self._generate_code_parts(name)
+        code_parts = self._generate_code_parts(name, tf)
         header_content, source_content = self._get_files_content(
             code_parts,
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -45,9 +44,9 @@ class FilterCodeGenerator:
         self._write_files(header_content, source_content)
         return self.header_path, self.source_path
 
-    def _generate_code_parts(self, name):
-        denominator_coeffs = self.tf[1]
-        numerator_coeffs = self.tf[0]
+    def _generate_code_parts(self, name, tf):
+        denominator_coeffs = tf[1]
+        numerator_coeffs = tf[0]
         order = max(len(denominator_coeffs), len(numerator_coeffs)) - 1
 
         # Generate structure definition

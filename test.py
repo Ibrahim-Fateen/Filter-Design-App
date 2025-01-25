@@ -1,35 +1,110 @@
-from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QFileDialog, QMessageBox
 
 from Filter import Filter
 from PlotsWidget import FilterPlotsWidget
 from ZPlaneWidget import ZPlaneWidget
 from ElementsListWidget import ElementsListWidget
-from FilterRealizer import FilterRealizer
+from FilterVisualizer import FilterVisualizer
+from FilterCodeGenerator import FilterCodeGenerator
 
 
-class FilterRealizerWidget(QWidget):
+class FilterExportWidget(QWidget):
     def __init__(self, filter):
         super().__init__()
-        self.filter_realizer = FilterRealizer(filter)
+        self.filter_realizer = FilterVisualizer(filter)
+        self.code_generator = FilterCodeGenerator()
+        self.filter = filter
 
         self.cascade_button = QPushButton("Show Cascade Form")
         self.direct_form_ii_button = QPushButton("Show Direct Form II")
+        self.c_code_button = QPushButton("Generate C Code")
 
         self.cascade_button.clicked.connect(self.show_cascade)
         self.direct_form_ii_button.clicked.connect(self.show_direct_form_ii)
+        self.c_code_button.clicked.connect(self.generate_c_code)
 
         layout = QVBoxLayout()
         layout.addWidget(self.cascade_button)
         layout.addWidget(self.direct_form_ii_button)
+        layout.addWidget(self.c_code_button)
         self.setLayout(layout)
 
     def show_cascade(self):
-        self.filter_realizer.draw_cascade_form()
+        try:
+            self.filter_realizer.draw_cascade_form()
+        except ValueError as e:
+            response = QMessageBox.question(
+                self,
+                "Filter Not Realizable",
+                f"{str(e)}\n\nDo you want to auto-realize the filter?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if response == QMessageBox.Yes:
+                self.filter.auto_realize_filter()
+                self.filter_realizer.draw_cascade_form()
+            else:
+                return
         self.filter_realizer.show()
 
     def show_direct_form_ii(self):
-        self.filter_realizer.draw_direct_form_2()
+        try:
+            self.filter_realizer.draw_direct_form_2()
+        except ValueError as e:
+            response = QMessageBox.question(
+                self,
+                "Filter Not Realizable",
+                f"{str(e)}\n\nDo you want to auto-realize the filter?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if response == QMessageBox.Yes:
+                self.filter.auto_realize_filter()
+                self.filter_realizer.draw_direct_form_2()
+            else:
+                return
         self.filter_realizer.show()
+
+    def generate_c_code(self):
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save C Code",
+            "",
+            "C Source Files (*.c);;All Files (*.*)"
+        )
+        
+        if file_path:
+            try:
+                # Generate the code files
+                try:
+                    tf = self.filter.get_transfer_function(self.code_generator)
+                except ValueError as e:
+                    response = QMessageBox.question(
+                        self,
+                        "Filter Not Realizable",
+                        f"{str(e)}\n\nDo you want to auto-realize the filter?",
+                        QMessageBox.Yes | QMessageBox.No
+                    )
+                    if response == QMessageBox.Yes:
+                        self.filter.auto_realize_filter()
+                        tf = self.filter.get_transfer_function()
+                    else:
+                        return
+                header_path, source_path = self.code_generator.export_c_code(file_path, tf)
+                
+                # Show success message
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    f"Filter code generated successfully!\n\n"
+                    f"Header file: {header_path}\n"
+                    f"Source file: {source_path}"
+                )
+            except Exception as e:
+                # Show error message if something goes wrong
+                QMessageBox.critical(
+                    self,
+                    "Error",
+                    f"Failed to generate code: {str(e)}"
+                )
 
 
 if __name__ == '__main__':
@@ -40,7 +115,7 @@ if __name__ == '__main__':
     zplane = ZPlaneWidget()
     plots = FilterPlotsWidget()
     elements_list = ElementsListWidget()
-    realizer_widget = FilterRealizerWidget(filter)
+    realizer_widget = FilterExportWidget(filter)
 
     zplane.set_filter(filter)
     plots.set_filter(filter)
