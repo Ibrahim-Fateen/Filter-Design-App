@@ -110,7 +110,8 @@ class FilterPlotsWidget(QWidget):
 
         # Set reasonable y-axis limits for magnitude
         min_mag = max(min(self.magnitude_db), -100)  # Limit to -100 dB
-        self.mag_ax.set_ylim(min_mag - 10, max(self.magnitude_db) + 10)
+        max_mag = min(max(self.magnitude_db), 100)  # Limit to 100 dB
+        self.mag_ax.set_ylim(min_mag - 10, max_mag + 10)
 
         # # Add horizontal line at -3dB for reference
         # self.mag_ax.axhline(y=-3, color='r', linestyle='--', alpha=0.5)

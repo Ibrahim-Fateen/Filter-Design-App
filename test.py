@@ -1,3 +1,4 @@
+import numpy as np
 from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QFileDialog, QMessageBox
 
 from Filter import Filter
@@ -18,15 +19,18 @@ class FilterExportWidget(QWidget):
         self.cascade_button = QPushButton("Show Cascade Form")
         self.direct_form_ii_button = QPushButton("Show Direct Form II")
         self.c_code_button = QPushButton("Generate C Code")
+        self.add_all_pass_button = QPushButton("Add All-Pass Filter")
 
         self.cascade_button.clicked.connect(self.show_cascade)
         self.direct_form_ii_button.clicked.connect(self.show_direct_form_ii)
         self.c_code_button.clicked.connect(self.generate_c_code)
+        self.add_all_pass_button.clicked.connect(self.show_all_pass_dialog)
 
         layout = QVBoxLayout()
         layout.addWidget(self.cascade_button)
         layout.addWidget(self.direct_form_ii_button)
         layout.addWidget(self.c_code_button)
+        layout.addWidget(self.add_all_pass_button)
         self.setLayout(layout)
 
     def show_cascade(self):
@@ -102,6 +106,9 @@ class FilterExportWidget(QWidget):
                 f"Header file: {header_path}\n"
                 f"Source file: {source_path}"
             )
+
+    def show_all_pass_dialog(self):
+        pass
 
 
 if __name__ == '__main__':
