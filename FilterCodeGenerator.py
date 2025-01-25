@@ -29,7 +29,7 @@ class FilterCodeGenerator:
         self.header_path = None
         self.source_path = None
 
-    def export_c_code(self, name="filter", file_path=None):
+    def export_c_code(self, file_path, name="filter"):
         base_name = file_path.rsplit('.', 1)[0]
         base_filename = base_name.split('/')[-1]
 
