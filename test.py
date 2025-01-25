@@ -8,47 +8,7 @@ from ZPlaneWidget import ZPlaneWidget
 from ElementsListWidget import ElementsListWidget
 from FilterVisualizer import FilterVisualizer
 from FilterCodeGenerator import FilterCodeGenerator
-
-
-class AllPassFilterDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Add All-Pass Filter")
-
-        #input the (a)
-        self.coefficient_label = QLabel("Enter coefficient (a):")
-        self.coefficient_input = QLineEdit()
-
-        #input the angle (theta)
-        self.angle_label = QLabel("Enter angle (theta):")
-        self.angle_input = QLineEdit()
-
-        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.buttons.accepted.connect(self.accept)
-        self.buttons.rejected.connect(self.reject)
-
-        layout = QVBoxLayout()
-        input_layout = QHBoxLayout()
-        input_layout.addWidget(self.coefficient_label)
-        input_layout.addWidget(self.coefficient_input)
-        input_layout.addWidget(self.angle_label)
-        input_layout.addWidget(self.angle_input)
-
-        layout.addLayout(input_layout)
-        layout.addWidget(self.buttons)
-        self.setLayout(layout)
-
-    def get_coefficient(self):
-        try:
-            return float(self.coefficient_input.text())
-        except ValueError:
-            return None
-
-    def get_angle(self):
-        try:
-            return float(self.angle_input.text())
-        except ValueError:
-            return None
+from AllPassFilter import AllPassFiltersListWidget
 
 
 class FilterExportWidget(QWidget):
@@ -61,18 +21,18 @@ class FilterExportWidget(QWidget):
         self.cascade_button = QPushButton("Show Cascade Form")
         self.direct_form_ii_button = QPushButton("Show Direct Form II")
         self.c_code_button = QPushButton("Generate C Code")
-        self.add_all_pass_button = QPushButton("Add All-Pass Filter")
+        # self.add_all_pass_button = QPushButton("Add All-Pass Filter")
 
         self.cascade_button.clicked.connect(self.show_cascade)
         self.direct_form_ii_button.clicked.connect(self.show_direct_form_ii)
         self.c_code_button.clicked.connect(self.generate_c_code)
-        self.add_all_pass_button.clicked.connect(self.show_all_pass_dialog)
+        # self.add_all_pass_button.clicked.connect(self.show_all_pass_dialog)
 
         layout = QVBoxLayout()
         layout.addWidget(self.cascade_button)
         layout.addWidget(self.direct_form_ii_button)
         layout.addWidget(self.c_code_button)
-        layout.addWidget(self.add_all_pass_button)
+        # layout.addWidget(self.add_all_pass_button)
         self.setLayout(layout)
 
     def show_cascade(self):
@@ -149,32 +109,33 @@ class FilterExportWidget(QWidget):
                 f"Source file: {source_path}"
             )
 
-    def show_all_pass_dialog(self):
-        dialog = AllPassFilterDialog(self)
-        if dialog.exec():
-            coefficient = dialog.get_coefficient()
-            angle = dialog.get_angle()
-            if coefficient is None or angle is None:
-                QMessageBox.critical(self, "Error", "Invalid coefficient value or angle!")
-                return
+    # def show_all_pass_dialog(self):
+    #     dialog = AllPassFilterWidget(self)
+    #     if dialog.exec():
+    #         coefficient = dialog.get_coefficient()
+    #         angle = dialog.get_angle()
+    #         if coefficient is None or angle is None:
+    #             QMessageBox.critical(self, "Error", "Invalid coefficient value or angle!")
+    #             return
+    #
+    #         # Calculate the zero and pole
+    #         zero = 1 / coefficient
+    #         pole = coefficient
+    #
+    #         # Adjust the zero and pole positions using the angle
+    #         angle_rad = np.deg2rad(angle)
+    #         zero = zero * np.exp(1j * angle_rad)
+    #         pole = pole * np.exp(1j * angle_rad)
+    #
+    #         # Add to filter
+    #         self.filter.add_zero(zero)
+    #         self.filter.add_pole(pole)
+    #
+    #         # Update visualizations
+    #         self.filter.notify_subscribers(self)
+    #         QMessageBox.information(self, "Success", "All-pass filter added successfully!")
+    #         return
 
-            # Calculate the zero and pole
-            zero = 1 / coefficient
-            pole = coefficient
-
-            # Adjust the zero and pole positions using the angle
-            angle_rad = np.deg2rad(angle)
-            zero = zero * np.exp(1j * angle_rad)
-            pole = pole * np.exp(1j * angle_rad)
-
-            # Add to filter
-            self.filter.add_zero(zero)
-            self.filter.add_pole(pole)
-
-            # Update visualizations
-            self.filter.notify_subscribers(self)
-            QMessageBox.information(self, "Success", "All-pass filter added successfully!")
-            return
 
 if __name__ == '__main__':
     app = QApplication()
@@ -185,15 +146,18 @@ if __name__ == '__main__':
     plots = FilterPlotsWidget()
     elements_list = ElementsListWidget()
     realizer_widget = FilterExportWidget(filter)
+    all_pass_filters_widget = AllPassFiltersListWidget()
 
     zplane.set_filter(filter)
     plots.set_filter(filter)
     elements_list.set_filter(filter)
+    all_pass_filters_widget.set_filter(filter)
 
     # Show widgets
     zplane.show()
     plots.show()
     elements_list.show()
     realizer_widget.show()
+    all_pass_filters_widget.show()
 
     app.exec()

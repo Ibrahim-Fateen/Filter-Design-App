@@ -9,6 +9,7 @@ class Filter:
         self.zeros = []  # List of complex numbers
         self.poles = []  # List of complex numbers
         self.gain = 1.0
+        self.all_pass_filters = []  # List of all-pass filters
 
         # Create filters directory if it doesn't exist
         self.filters_dir = Path(__file__).parent / 'filters'
@@ -60,12 +61,15 @@ class Filter:
         # Notify subscribers
         self.notify_subscribers(sender)
 
-
     def update_from_element_list(self, zeros, poles, sender):
         self.zeros = zeros
         self.poles = poles
         self.notify_subscribers(sender)
-        # self._normalize_gain()
+
+    def update_all_pass_filters(self, all_pass_filters, sender):
+        """Update the list of all-pass filters and notify subscribers"""
+        self.all_pass_filters = all_pass_filters
+        self.notify_subscribers(sender)
 
     def _normalize_gain(self):
         """Normalize filter gain to 1 at DC (z = 1)"""
@@ -82,7 +86,6 @@ class Filter:
 
     def get_transfer_function(self, caller=None):
         """Get filter coefficients in transfer function form"""
-        # Convert zeros and poles to polynomials
         if type(caller).__name__ in ['FilterCodeGenerator', 'FilterVisualizer']:
             # make sure filter is realizable
             if not self._is_realizable():
