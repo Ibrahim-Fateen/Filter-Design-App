@@ -27,6 +27,16 @@ class Filter:
         self.poles.append(pole)
         self.notify_subscribers()
 
+    def remove_zero(self, zero):
+        """Remove a zero from the filter and notify subscribers."""
+        self.zeros.remove(zero)
+        self.notify_subscribers()
+
+    def remove_pole(self, pole):
+        """Remove a pole from the filter and notify subscribers."""
+        self.poles.remove(pole)
+        self.notify_subscribers()
+
     def subscribe(self, callback, instance):
         self.subscribers.append((callback, instance))
 
@@ -69,6 +79,23 @@ class Filter:
     def update_all_pass_filters(self, all_pass_filters, sender):
         """Update the list of all-pass filters and notify subscribers"""
         self.all_pass_filters = all_pass_filters
+
+        # make zeros and poles conjugate pairs from the all pass
+        for apf in all_pass_filters:
+            a = apf['a']
+            theta = apf['theta']
+            zero = 1 / a
+            pole = a
+            angle_rad = np.deg2rad(theta)
+            zero = zero * np.exp(1j * angle_rad)
+            pole = pole * np.exp(1j * angle_rad)
+
+            if zero not in self.zeros:
+                self.zeros.append(zero)
+            if pole not in self.poles:
+                self.poles.append(pole)
+
+
         self.notify_subscribers(sender)
 
     def _normalize_gain(self):

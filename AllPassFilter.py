@@ -77,16 +77,36 @@ class AllPassFiltersListWidget(QWidget):
                 self.apf_list.addItem(f"a: {a:.3f}, θ: {theta:.3f}")
                 self.notify_filter_change()
 
+
     def delete_apf(self, item):
-        """Delete the selected all-pass filter from the list and the filter instance"""
+        """Delete the selected all-pass filter from the list and the filter instance."""
+
+        # Now proceed with removing the filter from the system
         item_text = item.text()
         a, theta = self.parse_apf(item_text)
         if a is not None and theta is not None:
-            # Remove the all-pass filter from the filter instance
-            self.filter.all_pass_filters = [apf for apf in self.filter.all_pass_filters if
-                                            not (apf['a'] == a and apf['theta'] == theta)]
+            # Remove the zero and pole corresponding to this all-pass filter
+            zero = 1 / a
+            pole = a
+            angle_rad = np.deg2rad(theta)
+            zero = zero * np.exp(1j * angle_rad)
+            pole = pole * np.exp(1j * angle_rad)
+
+            # Remove zero and pole from the filter system
+            self.filter.remove_zero(zero)
+            self.filter.remove_pole(pole)
+
+            # Remove the all-pass filter from the all_pass_filters list
+            self.filter.all_pass_filters = [
+                apf for apf in self.filter.all_pass_filters
+                if not (apf['a'] == a and apf['theta'] == theta)
+            ]
             self.filter.notify_subscribers(self)
-        self.apf_list.takeItem(self.apf_list.row(item))
+
+        # Get the row of the item and remove it from the list first
+        row = self.apf_list.row(item)
+        self.apf_list.takeItem(row)
+        self.notify_filter_change()
 
     def parse_apf(self, text):
         """Parse all-pass filter from string"""
@@ -119,7 +139,7 @@ class AddAllPassFilterDialog(QDialog):
 
         # Add buttons
         self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.button_box.accepted.connect(self.add_all_pass_filter_to_channel)
+        self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
 
         # Layout setup
@@ -157,25 +177,25 @@ class AddAllPassFilterDialog(QDialog):
         except ValueError:
             return None
 
-    def add_all_pass_filter_to_channel(self):
-        a = self.get_coefficient()
-        theta = self.get_angle()
-        if a is not None and theta is not None:
-            # Add the all-pass filter to the filter instance
-            zero = 1 / a
-            pole = a
-            angle_rad = np.deg2rad(theta)
-            zero = zero * np.exp(1j * angle_rad)
-            pole = pole * np.exp(1j * angle_rad)
-            self.filter_instance.add_zero(zero)
-            self.filter_instance.add_pole(pole)
-            self.filter_instance.notify_subscribers(self)
-            self.accept()
+    # def add_all_pass_filter_to_channel(self):
+    #     a = self.get_coefficient()
+    #     theta = self.get_angle()
+    #     if a is not None and theta is not None:
+    #         # Add the all-pass filter to the filter instance
+    #         zero = 1 / a
+    #         pole = a
+    #         angle_rad = np.deg2rad(theta)
+    #         zero = zero * np.exp(1j * angle_rad)
+    #         pole = pole * np.exp(1j * angle_rad)
+    #         self.filter_instance.add_zero(zero)
+    #         self.filter_instance.add_pole(pole)
+    #         self.filter_instance.notify_subscribers(self)
+    #         self.accept()
 
     def update_plot(self):
         coefficient = self.get_coefficient()
         angle = self.get_angle()
-        if coefficient is None or angle is None:
+        if coefficient is None or coefficient == 0 or angle is None:
             return
 
         # Calculate the zero and pole
@@ -198,14 +218,15 @@ class AddAllPassFilterDialog(QDialog):
         self.ax.set_ylabel('Phase (rad)')
         self.ax.grid(True)
 
-        # Plot the phase response of the inputted filter
-        self.ax.plot(w, phase, label='Inputted Filter', color='blue')
+        # Plot the phase response of the apf filter
+        self.ax.plot(w, phase, label='APF Filter', color='blue')
 
-        # Plot the final response of the overall filter
+        # Plot the original response of the existing filter system
         if self.filter_instance:
-            final_w, magnitude_db, final_h = self.filter_instance.get_frequency_response()
-            final_phase = np.angle(final_h)
-            self.ax.plot(final_w, final_phase, label='Final Response', color='red')
+            system_w, system_magnitude_db, system_phase = self.filter_instance.get_frequency_response()
+            self.ax.plot(system_w, system_phase, label='System Response', color='red')
+
+
 
         self.ax.legend()
         self.canvas.draw()
