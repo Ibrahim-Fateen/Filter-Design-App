@@ -226,7 +226,15 @@ class AddAllPassFilterDialog(QDialog):
             system_w, system_magnitude_db, system_phase = self.filter_instance.get_frequency_response()
             self.ax.plot(system_w, system_phase, label='System Response', color='red')
 
-
+        # add the apf filter to the existing system and calculate the output phase response
+        # create a copy of the system not add to the original system
+        system_zeros = self.filter_instance.zeros.copy()
+        system_poles = self.filter_instance.poles.copy()
+        system_zeros.append(zero)
+        system_poles.append(pole)
+        system_w, system_phase = signal.freqz_zpk(system_zeros, system_poles, 1, worN=1024)
+        system_phase = np.angle(system_phase)
+        self.ax.plot(system_w, system_phase, label='New System Response', color='green')
 
         self.ax.legend()
         self.canvas.draw()
