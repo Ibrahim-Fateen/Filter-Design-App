@@ -1,8 +1,9 @@
-from PyQt5 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
 import pyqtgraph as pg
 import numpy as np
 from Signal import DigitalSignal
 from Filter import Filter
+
 
 class FilterUsageWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
@@ -207,15 +208,17 @@ class FilterUsageWidget(QtWidgets.QWidget):
         self.filter = filter_obj
         self.updatePlots()
 
-filter_obj = Filter()
-filter_obj.add_pole(0.95)
-filter_obj.add_zero(0)
-filter_obj.gain = 0.05
 
-app = QtWidgets.QApplication([])
-window = FilterUsageWidget()
-window.setFilter(filter_obj)
+if __name__ == "__main__":
+    filter_obj = Filter()
+    filter_obj.zeros = [0.5 + 0.5j, 0.5 - 0.5j]
+    filter_obj.poles = [0.8 + 0.2j, 0.8 - 0.2j]
+    filter_obj.gain = 1.0
 
-window.show()
+    app = QtWidgets.QApplication([])
+    window = FilterUsageWidget()
+    window.setFilter(filter_obj)
 
-app.exec_()
+    window.show()
+
+    app.exec_()

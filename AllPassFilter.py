@@ -1,16 +1,16 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget, QFrame, QMessageBox, QLineEdit, QDialog, QDialogButtonBox
+from PySide6.QtGui import Qt
+from PySide6.QtWidgets import QWidget, QPushButton, QListWidget, QComboBox, QSlider, QDoubleSpinBox
 import numpy as np
-from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QDialog, QDialogButtonBox
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QLabel, QDialog, QDialogButtonBox
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from scipy import signal
-from PlotsWidget import FilterPlotsWidget
+
 
 class AllPassFiltersListWidget(QWidget):
-    def __init__(self, parent=None, filter_instance=None, phase_response_instance=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.filter = filter_instance
-        self.phase_response = phase_response_instance
+        self.filter = None
         self.setup_ui()
         self.setup_connections()
 
@@ -69,14 +69,14 @@ class AllPassFiltersListWidget(QWidget):
         self.notify_filter_change()
 
     def show_add_apf_dialog(self):
-        dialog = AddAllPassFilterDialog(self, self.filter, self.phase_response)
+        w, _, phase_response = self.filter.get_frequency_response()
+        dialog = AddAllPassFilterDialog(self, w, phase_response)
         if dialog.exec():
             a = dialog.get_coefficient()
             theta = dialog.get_angle()
             if a is not None and theta is not None:
                 self.apf_list.addItem(f"a: {a:.3f}, θ: {theta:.3f}")
                 self.notify_filter_change()
-
 
     def delete_apf(self, item):
         """Delete the selected all-pass filter from the list and the filter instance."""
@@ -85,16 +85,6 @@ class AllPassFiltersListWidget(QWidget):
         item_text = item.text()
         a, theta = self.parse_apf(item_text)
         if a is not None and theta is not None:
-            # Remove the zero and pole corresponding to this all-pass filter
-            zero = 1 / a
-            pole = a
-            angle_rad = np.deg2rad(theta)
-            zero = zero * np.exp(1j * angle_rad)
-            pole = pole * np.exp(1j * angle_rad)
-
-            # Remove zero and pole from the filter system
-            self.filter.remove_zero(zero)
-            self.filter.remove_pole(pole)
 
             # Remove the all-pass filter from the all_pass_filters list
             self.filter.all_pass_filters = [
@@ -119,83 +109,139 @@ class AllPassFiltersListWidget(QWidget):
             return None, None
 
 
-
 class AddAllPassFilterDialog(QDialog):
-    def __init__(self, parent=None, filter_instance=None, phase_response_instance=None):
+    def __init__(self, parent=None, w=None, phase_response=None):
         super().__init__(parent)
         self.setWindowTitle("Add All-Pass Filter")
-        self.filter_instance = filter_instance
-        self.phase_response_instance = phase_response_instance
+        self.filter_phase_response = np.unwrap(phase_response)
 
-        # Input the coefficient (a)
-        self.coefficient_label = QLabel("Enter coefficient (a):")
-        self.coefficient_input = QLineEdit()
-        self.coefficient_input.textChanged.connect(self.update_plot)
+        # Main layout
+        layout = QVBoxLayout()
 
-        # Input the angle (theta)
-        self.angle_label = QLabel("Enter angle (theta):")
-        self.angle_input = QLineEdit()
-        self.angle_input.textChanged.connect(self.update_plot)
+        # Preset filters combo box
+        preset_layout = QHBoxLayout()
+        self.preset_label = QLabel("Preset Filters:")
+        self.preset_combo = QComboBox()
+        self.preset_combo.addItems([
+            "Custom Filter",
+            "90° Phase Shift (a=1.0, θ=π/2)",
+            "180° Phase Shift (a=1.0, θ=π)",
+            "45° Phase Shift (a=1.0, θ=π/4)"
+        ])
+        self.preset_combo.currentIndexChanged.connect(self.preset_selected)
+        preset_layout.addWidget(self.preset_label)
+        preset_layout.addWidget(self.preset_combo)
+        layout.addLayout(preset_layout)
 
-        # Add buttons
-        self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        self.button_box.accepted.connect(self.accept)
-        self.button_box.rejected.connect(self.reject)
+        # Radius (a) input
+        radius_layout = QHBoxLayout()
+        self.radius_label = QLabel("Pole radius (|a|):")
+        self.radius_slider = QSlider(Qt.Horizontal)
+        self.radius_slider.setRange(10, 1000)  # 0.1 to 10.0
+        self.radius_slider.setValue(100)  # Default 1.0
+        self.radius_slider.setTickInterval(10)
+        self.radius_slider.setTickPosition(QSlider.TicksBelow)
 
-        # Layout setup
-        input_layout = QHBoxLayout()
-        input_layout.addWidget(self.coefficient_label)
-        input_layout.addWidget(self.coefficient_input)
-        input_layout.addWidget(self.angle_label)
-        input_layout.addWidget(self.angle_input)
+        self.radius_spinbox = QDoubleSpinBox()
+        self.radius_spinbox.setRange(0.1, 10.0)
+        self.radius_spinbox.setValue(1.0)
+        self.radius_spinbox.setSingleStep(0.1)
+        self.radius_spinbox.setDecimals(3)
+
+        radius_layout.addWidget(self.radius_label)
+        radius_layout.addWidget(self.radius_slider)
+        radius_layout.addWidget(self.radius_spinbox)
+        layout.addLayout(radius_layout)
+
+        # Angle (theta) input
+        angle_layout = QHBoxLayout()
+        self.angle_label = QLabel("Pole angle (θ):")
+        self.angle_slider = QSlider(Qt.Horizontal)
+        self.angle_slider.setRange(0, 800)  # 0 to 2π * 127.32
+        self.angle_slider.setValue(0)
+        self.angle_slider.setTickInterval(100)  # π/4 intervals
+        self.angle_slider.setTickPosition(QSlider.TicksBelow)
+
+        self.angle_spinbox = QDoubleSpinBox()
+        self.angle_spinbox.setRange(0, 2 * np.pi)
+        self.angle_spinbox.setValue(0)
+        self.angle_spinbox.setSingleStep(np.pi / 8)
+        self.angle_spinbox.setDecimals(3)
+
+        angle_layout.addWidget(self.angle_label)
+        angle_layout.addWidget(self.angle_slider)
+        angle_layout.addWidget(self.angle_spinbox)
+        layout.addLayout(angle_layout)
 
         # Create plot
-        self.figure = Figure(figsize=(5, 4))
+        self.figure = Figure(figsize=(6, 4))
         self.canvas = FigureCanvas(self.figure)
         self.ax = self.figure.add_subplot(111)
         self.ax.set_title('Phase Response')
         self.ax.set_xlabel('ω (rad/sample)')
         self.ax.set_ylabel('Phase (rad)')
         self.ax.grid(True)
-
-        # Main layout
-        layout = QVBoxLayout()
-        layout.addLayout(input_layout)
         layout.addWidget(self.canvas)
+
+        # Add buttons
+        self.button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
         layout.addWidget(self.button_box)
+
+        # Connect signals
+        self.radius_slider.valueChanged.connect(self.radius_slider_changed)
+        self.radius_spinbox.valueChanged.connect(self.radius_spinbox_changed)
+        self.angle_slider.valueChanged.connect(self.angle_slider_changed)
+        self.angle_spinbox.valueChanged.connect(self.angle_spinbox_changed)
+
         self.setLayout(layout)
+        self.update_plot()
 
-    def get_coefficient(self):
-        try:
-            return float(self.coefficient_input.text())
-        except ValueError:
-            return None
+    def radius_slider_changed(self, value):
+        radius = value / 100.0
+        self.radius_spinbox.blockSignals(True)
+        self.radius_spinbox.setValue(radius)
+        self.radius_spinbox.blockSignals(False)
+        self.update_plot()
 
-    def get_angle(self):
-        try:
-            return float(self.angle_input.text())
-        except ValueError:
-            return None
+    def radius_spinbox_changed(self, value):
+        slider_value = int(value * 100)
+        self.radius_slider.blockSignals(True)
+        self.radius_slider.setValue(slider_value)
+        self.radius_slider.blockSignals(False)
+        self.update_plot()
 
-    # def add_all_pass_filter_to_channel(self):
-    #     a = self.get_coefficient()
-    #     theta = self.get_angle()
-    #     if a is not None and theta is not None:
-    #         # Add the all-pass filter to the filter instance
-    #         zero = 1 / a
-    #         pole = a
-    #         angle_rad = np.deg2rad(theta)
-    #         zero = zero * np.exp(1j * angle_rad)
-    #         pole = pole * np.exp(1j * angle_rad)
-    #         self.filter_instance.add_zero(zero)
-    #         self.filter_instance.add_pole(pole)
-    #         self.filter_instance.notify_subscribers(self)
-    #         self.accept()
+    def angle_slider_changed(self, value):
+        angle = (value / 127.32) * (np.pi / 4)
+        self.angle_spinbox.blockSignals(True)
+        self.angle_spinbox.setValue(angle)
+        self.angle_spinbox.blockSignals(False)
+        self.update_plot()
+
+    def angle_spinbox_changed(self, value):
+        slider_value = int((value / (np.pi / 4)) * 127.32)
+        self.angle_slider.blockSignals(True)
+        self.angle_slider.setValue(slider_value)
+        self.angle_slider.blockSignals(False)
+        self.update_plot()
+
+    def preset_selected(self, index):
+        if index == 1:  # 90° Phase Shift
+            self.radius_spinbox.setValue(1.0)
+            self.angle_spinbox.setValue(np.pi / 2)
+        elif index == 2:  # 180° Phase Shift
+            self.radius_spinbox.setValue(1.0)
+            self.angle_spinbox.setValue(np.pi)
+        elif index == 3:  # 45° Phase Shift
+            self.radius_spinbox.setValue(1.0)
+            self.angle_spinbox.setValue(np.pi / 4)
 
     def update_plot(self):
-        coefficient = self.get_coefficient()
-        angle = self.get_angle()
-        if coefficient is None or coefficient == 0 or angle is None:
+        coefficient = self.radius_spinbox.value()
+        angle = self.angle_spinbox.value()
+
+        if coefficient == 0:
             return
 
         # Calculate the zero and pole
@@ -203,13 +249,14 @@ class AddAllPassFilterDialog(QDialog):
         pole = coefficient
 
         # Adjust the zero and pole positions using the angle
-        angle_rad = np.deg2rad(angle)
-        zero = zero * np.exp(1j * angle_rad)
-        pole = pole * np.exp(1j * angle_rad)
+        zero = zero * np.exp(1j * angle)
+        pole = pole * np.exp(1j * angle)
 
         # Calculate the phase response of the inputted filter
-        w, h = signal.freqz([zero], [pole], worN=1024)
-        phase = np.angle(h)
+        tf = signal.zpk2tf([zero], [pole], 1)
+        w, h = signal.freqz(*tf, worN=1024)
+        all_pass_phase = np.angle(h)
+        all_pass_phase = np.unwrap(all_pass_phase)
 
         # Clear the plot
         self.ax.clear()
@@ -219,24 +266,15 @@ class AddAllPassFilterDialog(QDialog):
         self.ax.grid(True)
 
         # Plot the phase response of the apf filter
-        self.ax.plot(w, phase, label='APF Filter', color='blue')
-
-        # Plot the original response of the existing filter system
-        if self.filter_instance:
-            system_w, system_magnitude_db, system_phase = self.filter_instance.get_frequency_response()
-            self.ax.plot(system_w, system_phase, label='System Response', color='red')
-
-        # add the apf filter to the existing system and calculate the output phase response
-        # create a copy of the system not add to the original system
-        system_zeros = self.filter_instance.zeros.copy()
-        system_poles = self.filter_instance.poles.copy()
-        system_zeros.append(zero)
-        system_poles.append(pole)
-        system_w, system_phase = signal.freqz_zpk(system_zeros, system_poles, 1, worN=1024)
-        system_phase = np.angle(system_phase)
-        self.ax.plot(system_w, system_phase, label='New System Response', color='green')
+        self.ax.plot(w, all_pass_phase, label='APF Filter', color='blue')  # blue solid line
+        self.ax.plot(w, self.filter_phase_response, label='System Response', color='black')  # black solid line
+        self.ax.plot(w, all_pass_phase + self.filter_phase_response, label='Combined Response', color='green', linestyle='--')
 
         self.ax.legend()
         self.canvas.draw()
 
+    def get_coefficient(self):
+        return self.radius_spinbox.value()
 
+    def get_angle(self):
+        return self.angle_spinbox.value()

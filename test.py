@@ -146,7 +146,7 @@ if __name__ == '__main__':
     plots = FilterPlotsWidget()
     elements_list = ElementsListWidget()
     realizer_widget = FilterExportWidget(filter)
-    all_pass_filters_widget = AllPassFiltersListWidget(filter_instance=filter, phase_response_instance=plots)
+    all_pass_filters_widget = AllPassFiltersListWidget()
 
     zplane.set_filter(filter)
     plots.set_filter(filter)

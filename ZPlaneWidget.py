@@ -3,7 +3,7 @@ import numpy as np
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                QCheckBox, QPushButton, QApplication, QToolTip)
 from PySide6.QtCore import Qt, QPointF, QRect
-from PySide6.QtGui import QPainter, QPen, QColor, QPixmap
+from PySide6.QtGui import QPainter, QPen, QColor, QPixmap, QLinearGradient
 
 from logger_config import setup_logger
 logger = setup_logger(__name__)
@@ -38,6 +38,8 @@ class ZPlaneWidget(QWidget):
         self.setMouseTracking(True)
         self.zeros = []
         self.poles = []
+        self.all_pass_zeros = []
+        self.all_pass_poles = []
         self.zoom_level = 1.0
         self.min_zoom = 0.1
         self.max_zoom = 4.0
@@ -57,6 +59,12 @@ class ZPlaneWidget(QWidget):
 
         self.trash_closed_icon = QPixmap("icons/trash-closed.png")
         self.trash_opened_icon = QPixmap("icons/trash-opened.png")
+
+        self.all_pass_gradient = QLinearGradient(0, 0, 0, 20)
+        self.all_pass_gradient.setColorAt(0, QColor(150, 200, 150))  # Light metallic green
+        self.all_pass_gradient.setColorAt(0.3, QColor(100, 160, 100))  # Medium metallic green
+        self.all_pass_gradient.setColorAt(0.7, QColor(80, 140, 80))  # Darker metallic green
+        self.all_pass_gradient.setColorAt(1, QColor(60, 120, 60))  # Darkest metallic green
 
         self.setup_ui()
         self.save_state()
@@ -130,8 +138,11 @@ class ZPlaneWidget(QWidget):
 
     def on_filter_update(self, filter_instance):
         self._updating_from_filter = True
+        self.filter = filter_instance
         self.zeros = []
         self.poles = []
+        self.all_pass_zeros = []
+        self.all_pass_poles = []
 
         # Convert filter zeros/poles to complex numbers if they aren't already
         zero_positions = [complex(z.real, z.imag) for z in filter_instance.zeros]
@@ -140,6 +151,15 @@ class ZPlaneWidget(QWidget):
         # Add elements with proper conjugate linking
         self.add_elements_from_filter(zero_positions, 'zero')
         self.add_elements_from_filter(pole_positions, 'pole')
+
+        # Add all-pass zeros and poles
+        for ap in filter_instance.all_pass_filters:
+            a = ap["a"]
+            angle = ap["theta"]
+            z = 1 / a * np.exp(1j * angle)
+            p = a * np.exp(1j * angle)
+            self.all_pass_zeros.append(ZPlaneElement(z))
+            self.all_pass_poles.append(ZPlaneElement(p))
 
         self._updating_from_filter = False
         self.save_state()
@@ -150,7 +170,13 @@ class ZPlaneWidget(QWidget):
             zeros = [z for z in self.zeros]
             poles = [p for p in self.poles]
 
-            self.filter.update_from_zplane(zeros, poles, self)
+            all_pass_filters = []
+            for ap in self.all_pass_poles:
+                a = np.abs(ap.position)
+                angle = np.angle(ap.position)
+                all_pass_filters.append({"a": a, "theta": angle})
+
+            self.filter.update_from_zplane(zeros, poles, all_pass_filters, self)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -191,6 +217,8 @@ class ZPlaneWidget(QWidget):
                         int(center.x() + scaled_radius * 15), int(center.y()))
         painter.drawLine(int(center.x()), int(center.y() - scaled_radius * 15),
                         int(center.x()), int(center.y() + scaled_radius * 15))
+
+        self.draw_all_pass_elements(painter)
 
         # Draw existing elements
         self.draw_elements(painter, self.zeros, is_pole=False)
@@ -351,6 +379,74 @@ class ZPlaneWidget(QWidget):
             position = self.complex_to_point(element.position)
             draw_func(painter, position)
 
+    def draw_all_pass_elements(self, painter):
+        """Draw all all-pass elements with enhanced metallic styling"""
+        # Draw all-pass zeros
+        for element in self.all_pass_zeros:
+            position = self.complex_to_point(element.position)
+            self.draw_all_pass_element(painter, position, is_pole=False)
+
+        # Draw all-pass poles
+        for element in self.all_pass_poles:
+            position = self.complex_to_point(element.position)
+            self.draw_all_pass_element(painter, position, is_pole=True)
+
+    def draw_all_pass_element(self, painter, point, is_pole):
+        """Draw an all-pass element with enhanced metallic styling"""
+        size = 8  # Slightly larger than before
+
+        # Save current painter state
+        painter.save()
+
+        # Set up the metallic appearance with more pronounced effects
+        painter.setBrush(self.all_pass_gradient)
+        painter.setPen(QPen(QColor(40, 80, 40), 2))  # Darker green border
+
+        if is_pole:
+            # Draw a filled circle background for better visibility
+            # painter.setBrush(QColor(230, 255, 230))  # Very light green
+            # painter.drawEllipse(point, size * 1.2, size * 1.2)
+
+            # Draw the X with metallic finish
+            painter.setBrush(self.all_pass_gradient)
+            points = [
+                QPointF(point.x() - size, point.y() - size),
+                QPointF(point.x() + size, point.y() + size),
+                QPointF(point.x() - size, point.y() + size),
+                QPointF(point.x() + size, point.y() - size)
+            ]
+
+            # Draw thicker lines for X
+            painter.setPen(QPen(QColor(40, 80, 40), 3))
+            painter.drawLine(points[0], points[1])
+            painter.drawLine(points[2], points[3])
+
+        else:
+            # Draw outer circle with metallic finish
+            painter.drawEllipse(point, size, size)
+
+            # Draw inner circle for depth
+            painter.setBrush(QColor(230, 255, 230))  # Very light green
+            painter.drawEllipse(point, size * 0.6, size * 0.6)
+
+            # Draw center dot with metallic finish
+            painter.setBrush(self.all_pass_gradient)
+            painter.drawEllipse(point, size * 0.2, size * 0.2)
+
+        # Add highlight effect
+        highlight = QLinearGradient(
+            point.x() - size, point.y() - size,
+            point.x() + size, point.y() + size
+        )
+        highlight.setColorAt(0, QColor(255, 255, 255, 80))
+        highlight.setColorAt(1, QColor(255, 255, 255, 0))
+        painter.setBrush(highlight)
+        painter.setPen(Qt.NoPen)
+        painter.drawEllipse(point, size * 0.8, size * 0.8)
+
+        # Restore painter state
+        painter.restore()
+
     def draw_zero(self, painter, point, phantom=False):
         painter.setOpacity(0.2 if phantom else 1.0)
         painter.setPen(QPen(Qt.blue, 2))
@@ -385,6 +481,16 @@ class ZPlaneWidget(QWidget):
                         self.dragging_item = element
                     self.dragging_type = type_name
                     self.dragging_index = i
+                    return
+
+        for elements in [self.all_pass_zeros, self.all_pass_poles]:
+            for element in elements:
+                element_pos = self.complex_to_point(element.position)
+                if (element_pos - pos).manhattanLength() < 10:
+                    # Show tooltip indicating element cannot be moved
+                    QToolTip.showText(event.globalPos(),
+                                      "All-pass filter elements cannot be moved",
+                                      self)
                     return
 
     def mouseMoveEvent(self, event):
@@ -555,6 +661,8 @@ class ZPlaneWidget(QWidget):
         state = {
             'zeros': [],
             'poles': [],
+            'all_pass_zeros': [ZPlaneElement(e.position) for e in self.all_pass_zeros],
+            'all_pass_poles': [ZPlaneElement(e.position) for e in self.all_pass_poles],
             'conjugate_enabled': self.conjugate_mode
         }
 
@@ -576,6 +684,8 @@ class ZPlaneWidget(QWidget):
     def set_state(self, state):
         self.zeros = [ZPlaneElement(e.position, e.is_phantom) for e in state['zeros']]
         self.poles = [ZPlaneElement(e.position, e.is_phantom) for e in state['poles']]
+        self.all_pass_zeros = [ZPlaneElement(e.position) for e in state.get('all_pass_zeros', [])]
+        self.all_pass_poles = [ZPlaneElement(e.position) for e in state.get('all_pass_poles', [])]
         self.conjugate_mode = state['conjugate_enabled']
         self.conjugate_checkbox.setChecked(self.conjugate_mode)
         self.update_undo_redo_state()
