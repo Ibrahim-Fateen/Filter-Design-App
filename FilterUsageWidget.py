@@ -47,8 +47,8 @@ class FilterUsageWidget(QtWidgets.QWidget):
         self.layout.addWidget(self.inputPlot)
         self.layout.addWidget(self.filteredPlot)
         
-        self.inputPlot.setLimits(xMin=0, yMin=-1.1, yMax=1.1)  
-        self.filteredPlot.setLimits(xMin=0, yMin=-1.1, yMax=1.1)
+        self.inputPlot.setLimits(xMin=0, yMin=-1000, yMax=1000)  
+        self.filteredPlot.setLimits(xMin=0, yMin=-1000, yMax=1000)
         
         self.inputPlot.enableAutoRange()
         self.filteredPlot.enableAutoRange()
@@ -60,7 +60,10 @@ class FilterUsageWidget(QtWidgets.QWidget):
         self.buffer_size = 1000
         self.signal_buffer = np.zeros(self.buffer_size)
         self.filtered_buffer = np.zeros(self.buffer_size)
-        self.time_array = np.arange(self.buffer_size)
+        
+        # Modified time array initialization
+        self.base_sampling_rate = 1000  # Base rate in Hz
+        self.updateTimeArray()
         
         self.view_percentage = 0.02  
         self.current_position = 0
@@ -68,6 +71,11 @@ class FilterUsageWidget(QtWidgets.QWidget):
         
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.updateView)
+
+    def updateTimeArray(self):
+        # Calculate temporal resolution based on slider
+        self.temporal_resolution = self.speed / 10.0  # seconds per point
+        self.time_array = np.arange(self.buffer_size) * self.temporal_resolution
 
     def connectSignals(self):
         self.modeCheckbox.toggled.connect(self.toggleMode)
@@ -88,6 +96,7 @@ class FilterUsageWidget(QtWidgets.QWidget):
         else:
             self.timer.timeout.disconnect()
             self.timer.timeout.connect(self.updateView)
+        
 
     def browseFile(self):
         filename, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open Signal", "", "CSV files (*.csv)")
@@ -98,8 +107,16 @@ class FilterUsageWidget(QtWidgets.QWidget):
     def updateSpeed(self, value):
         self.speed = value
         if self.playing:
-            interval = max(10, int(1000/value))  
-            self.timer.setInterval(interval)
+            if self.real_time_mode:
+                # Update temporal resolution
+                self.updateTimeArray()
+                # Update timer interval based on temporal resolution
+                interval = int(self.temporal_resolution * 1000)  # Convert to milliseconds
+                self.timer.setInterval(max(10, interval))
+            else:
+                # File mode speed control remains the same
+                interval = max(10, int(1000/value))
+                self.timer.setInterval(interval)
 
     def togglePlay(self):
         self.playing = not self.playing
@@ -142,12 +159,19 @@ class FilterUsageWidget(QtWidgets.QWidget):
             self.inputPlot.clear()
             self.filteredPlot.clear()
             
-            self.inputPlot.plot(self.time_array/1000, self.signal_buffer)
+            # Plot with updated time array
+            self.inputPlot.plot(self.time_array, self.signal_buffer)
             
             if hasattr(self, 'filter'):
-                real_time_signal = DigitalSignal(self.signal_buffer, 1000)
+                real_time_signal = DigitalSignal(self.signal_buffer, 
+                                               int(1/self.temporal_resolution))
                 filtered_data = real_time_signal.apply_filter(self.filter).data
-                self.filteredPlot.plot(self.time_array/1000, filtered_data)
+                self.filteredPlot.plot(self.time_array, filtered_data)
+            
+            # Update x-axis range to show full buffer
+            total_time = self.buffer_size * self.temporal_resolution
+            self.inputPlot.setXRange(0, total_time)
+            self.filteredPlot.setXRange(0, total_time)
 
     def wheelEvent(self, event):
         if not self.real_time_mode:
@@ -175,7 +199,7 @@ class FilterUsageWidget(QtWidgets.QWidget):
                     filtered_signal = self.signal.apply_filter(self.filter)
                     self.filteredPlot.plot(filtered_signal.time, filtered_signal.data)
         
-        self.updatePlotLimits()
+        # self.updatePlotLimits()
 
     def updatePlotLimits(self):
         xMin = 0
