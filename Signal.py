@@ -12,7 +12,7 @@ class DigitalSignal:
         Apply a filter to the signal.
         """
 
-        Numerator, Denominator = signal.zpk2tf(filter_obj.zeros, filter_obj.poles, filter_obj.gain)
+        Numerator, Denominator = filter_obj.get_transfer_function()
         
         filtered_data = signal.lfilter(Numerator, Denominator, self.data)
             
