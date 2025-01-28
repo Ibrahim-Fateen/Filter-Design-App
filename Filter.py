@@ -10,6 +10,8 @@ class Filter:
         self.poles = []  # List of complex numbers
         self.gain = 1.0
         self.all_pass_filters = []  # List of all-pass filters
+        self.all_pass_zeros = []
+        self.all_pass_poles = []
 
         # Create filters directory if it doesn't exist
         self.filters_dir = Path(__file__).parent / 'filters'
@@ -49,9 +51,21 @@ class Filter:
         self.poles = new_poles
 
         self.all_pass_filters = all_pass_filters
+        self.parse_all_pass_filters()
 
         # Notify subscribers
         self.notify_subscribers(sender)
+
+    def parse_all_pass_filters(self):
+        self.all_pass_zeros = []
+        self.all_pass_poles = []
+        for ap in self.all_pass_filters:
+            a = ap["coefficient"]
+            angle = ap["theta"]
+            zero = 1 / a * np.exp(1j * angle)
+            pole = a * np.exp(1j * angle)
+            self.all_pass_zeros.append(zero)
+            self.all_pass_poles.append(pole)
 
     def update_from_element_list(self, zeros, poles, sender):
         self.zeros = zeros
@@ -61,7 +75,7 @@ class Filter:
     def update_all_pass_filters(self, all_pass_filters, sender):
         """Update the list of all-pass filters and notify subscribers"""
         self.all_pass_filters = all_pass_filters
-
+        self.parse_all_pass_filters()
         self.notify_subscribers(sender)
 
     def _normalize_gain(self):
@@ -84,7 +98,8 @@ class Filter:
             if not self._is_realizable():
                 raise ValueError("Filter must have a conjugate pair for each complex element to convert to transfer "
                                  "function form")
-        return signal.zpk2tf(self.zeros, self.poles, self.gain)
+
+        return signal.zpk2tf(self.zeros + self.all_pass_zeros, self.poles + self.all_pass_zeros, self.gain)
 
     def _is_realizable(self):
         # Auto add conjugates for elements without a conjugate
@@ -94,6 +109,12 @@ class Filter:
                 return False
         for p in self.poles:
             if p.imag != 0 and complex(p.real, -p.imag) not in self.poles:
+                return False
+        for z in self.all_pass_zeros:
+            if z.imag != 0 and complex(z.real, -z.imag) not in self.all_pass_zeros:
+                return False
+        for p in self.all_pass_poles:
+            if p.imag != 0 and complex(p.real, -p.imag) not in self.all_pass_poles:
                 return False
         return True
 
@@ -106,6 +127,11 @@ class Filter:
         for p in self.poles:
             if p.imag != 0 and complex(p.real, -p.imag) not in self.poles:
                 self.poles.append(complex(p.real, -p.imag))
+        for p in self.all_pass_poles:
+            if p.imag != 0 and complex(p.real, -p.imag) not in self.all_pass_poles:
+                self.all_pass_poles.append(complex(p.real, -p.imag))
+                self.all_pass_zeros.append(complex(1 / p.real, -p.imag))
+                self.all_pass_filters.append({"coefficient": 1 / p.real, "theta": -p.imag})
         self.notify_subscribers()
 
     def get_cascade_form(self):
@@ -135,6 +161,7 @@ class Filter:
         data = {
             'zeros': [(z.real, z.imag) for z in self.zeros],
             'poles': [(p.real, p.imag) for p in self.poles],
+            'all_pass_filters': self.all_pass_filters,
             'gain': self.gain
         }
 
@@ -150,5 +177,7 @@ class Filter:
 
         self.zeros = [complex(z[0], z[1]) for z in data['zeros']]
         self.poles = [complex(p[0], p[1]) for p in data['poles']]
+        self.all_pass_filters = data['all_pass_filters']
         self.gain = data['gain']
+        self.parse_all_pass_filters()
         self.notify_subscribers()

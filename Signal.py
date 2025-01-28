@@ -15,11 +15,6 @@ class DigitalSignal:
         Numerator, Denominator = signal.zpk2tf(filter_obj.zeros, filter_obj.poles, filter_obj.gain)
         
         filtered_data = signal.lfilter(Numerator, Denominator, self.data)
-        
-        # Apply all-pass filters if any
-        for all_pass in filter_obj.all_pass_filters:
-            b_ap, a_ap = signal.zpk2tf(all_pass.zeros, all_pass.poles, all_pass.gain)
-            filtered_data = signal.lfilter(b_ap, a_ap, filtered_data)
             
         return DigitalSignal(filtered_data, self.sampling_rate)
     
