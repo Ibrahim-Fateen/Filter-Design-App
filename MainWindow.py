@@ -19,6 +19,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Digital Filter Designer")
         self.setMinimumSize(1200, 800)
+        self.showMaximized()
         
         # Load and apply styles
         with open("styles.qss", "r") as f:
@@ -39,7 +40,8 @@ class MainWindow(QMainWindow):
         main_layout = QVBoxLayout(central_widget)
         
         # Create tab widget
-        tab_widget = QTabWidget()
+        self.tab_widget = QTabWidget()
+        self.tab_widget.currentChanged.connect(self.on_tab_changed)  # Connect tab change signal
         
         # Create and setup design tab
         design_tab = QWidget()
@@ -77,10 +79,10 @@ class MainWindow(QMainWindow):
         self.usage_widget = FilterUsageWidget()
         
         # Add tabs
-        tab_widget.addTab(design_tab, "Filter Design")
-        tab_widget.addTab(self.usage_widget, "Filter Usage")
+        self.tab_widget.addTab(design_tab, "Filter Design")
+        self.tab_widget.addTab(self.usage_widget, "Filter Usage")
         
-        main_layout.addWidget(tab_widget)
+        main_layout.addWidget(self.tab_widget)
         
         # Connect widgets to filter
         self.elements_list.set_filter(self.filter)
@@ -139,6 +141,23 @@ class MainWindow(QMainWindow):
         direct_form_action.triggered.connect(self.show_direct_form)
         c_code_action.triggered.connect(self.generate_c_code)
         save_filter_action.triggered.connect(self.save_filter)
+    
+    def on_tab_changed(self, index):
+        # If switching to Filter Usage tab (index 1)
+        if index == 1:
+            if not self.filter.is_realizable():
+                response = QMessageBox.question(
+                    self,
+                    "Filter Not Realizable",
+                    f"Do you want to auto-realize the filter?",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                if response == QMessageBox.Yes:
+                    self.filter.auto_realize_filter()
+                else:
+                    # Switch back to design tab
+                    self.tab_widget.setCurrentIndex(0)
+                    return
 
     def show_cascade_form(self):
         file_path, _ = QFileDialog.getSaveFileName(

@@ -15,6 +15,8 @@ class DigitalSignal:
         Numerator, Denominator = filter_obj.get_transfer_function()
         
         filtered_data = signal.lfilter(Numerator, Denominator, self.data)
+
+        filtered_data = np.real(filtered_data)
             
         return DigitalSignal(filtered_data, self.sampling_rate)
     
@@ -25,8 +27,6 @@ class DigitalSignal:
         """
         data = np.genfromtxt(csv_file_path, delimiter=',', skip_header=skip_header)
         return cls(data, sampling_rate=1000)  # Default 1kHz sampling rate
-
-
 
 
 # t = np.linspace(0, 1, 1000)

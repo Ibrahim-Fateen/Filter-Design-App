@@ -182,7 +182,9 @@ class FilterUsageWidget(QtWidgets.QWidget):
                 self.zoom_level = min(1.0, self.zoom_level + 0.1)
             self.updateView()
 
-    def updatePlots(self):
+    def updatePlots(self, filter_instance=None):
+        if filter_instance is not None:
+            self.filter = filter_instance
         if self.real_time_mode:
             self.inputPlot.clear()
             self.filteredPlot.clear()
@@ -230,7 +232,7 @@ class FilterUsageWidget(QtWidgets.QWidget):
 
     def setFilter(self, filter_obj):
         self.filter = filter_obj
-        self.updatePlots()
+        self.filter.subscribe(self.updatePlots, self)
 
 
 if __name__ == "__main__":

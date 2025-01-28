@@ -95,13 +95,13 @@ class Filter:
         """Get filter coefficients in transfer function form"""
         if type(caller).__name__ in ['FilterCodeGenerator', 'FilterVisualizer']:
             # make sure filter is realizable
-            if not self._is_realizable():
+            if not self.is_realizable():
                 raise ValueError("Filter must have a conjugate pair for each complex element to convert to transfer "
                                  "function form")
 
         return signal.zpk2tf(self.zeros + self.all_pass_zeros, self.poles + self.all_pass_zeros, self.gain)
 
-    def _is_realizable(self):
+    def is_realizable(self):
         # Auto add conjugates for elements without a conjugate
         # If a complex element is present, it must have a conjugate
         for z in self.zeros:
@@ -136,7 +136,7 @@ class Filter:
 
     def get_cascade_form(self):
         """Get filter coefficients in cascade form"""
-        if not self._is_realizable():
+        if not self.is_realizable():
             raise ValueError("Filter must have a conjugate pair for each complex element to convert to cascade form")
         return signal.zpk2sos(self.zeros, self.poles, self.gain)
 
