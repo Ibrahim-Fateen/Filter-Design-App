@@ -100,7 +100,7 @@ class Filter:
                 raise ValueError("Filter must have a conjugate pair for each complex element to convert to transfer "
                                  "function form")
 
-        return signal.zpk2tf(self.zeros + self.all_pass_zeros, self.poles + self.all_pass_zeros, self.gain)
+        return signal.zpk2tf(self.zeros + self.all_pass_zeros, self.poles + self.all_pass_poles, self.gain)
 
     def is_realizable(self):
         # Auto add conjugates for elements without a conjugate
