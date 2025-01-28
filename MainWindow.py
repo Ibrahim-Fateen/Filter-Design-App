@@ -3,6 +3,7 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QTabWidget, QVBoxLayout,
                               QMessageBox)
 from PySide6.QtCore import Qt
 import matplotlib.pyplot as plt
+from scipy import signal
 
 from Filter import Filter
 from PlotsWidget import FilterPlotsWidget
@@ -105,18 +106,31 @@ class MainWindow(QMainWindow):
         import_file_action = import_menu.addAction("From File...")
         import_file_action.triggered.connect(self.import_filter_from_file)
         
-        # Well-known filters submenu
-        well_known_menu = import_menu.addMenu("Well-known Filters")
+        # Filter Library submenu
+        filter_library = import_menu.addMenu("Filter Library")
         
-        # Add some example filters
-        butterworth_action = well_known_menu.addAction("Butterworth Low-Pass")
-        chebyshev_action = well_known_menu.addAction("Chebyshev Low-Pass")
-        elliptic_action = well_known_menu.addAction("Elliptic Low-Pass")
+        # Create response type submenus
+        lpf_menu = filter_library.addMenu("Low-Pass Filters")
+        hpf_menu = filter_library.addMenu("High-Pass Filters")
+        bpf_menu = filter_library.addMenu("Band-Pass Filters")
         
-        # Connect actions
-        butterworth_action.triggered.connect(lambda: self.import_well_known_filter("butterworth"))
-        chebyshev_action.triggered.connect(lambda: self.import_well_known_filter("chebyshev"))
-        elliptic_action.triggered.connect(lambda: self.import_well_known_filter("elliptic"))
+        # Filter types and their menus
+        filter_types = {
+            "Butterworth": "butterworth",
+            "Chebyshev": "chebyshev",
+            "Inverse Chebyshev": "inverse_chebyshev",
+            "Bessel": "bessel",
+            "Elliptic": "elliptic"
+        }
+        
+        # Add actions for each filter type in each response category
+        for menu, response in [(lpf_menu, "lpf"), (hpf_menu, "hpf"), (bpf_menu, "bpf")]:
+            for filter_name, filter_type in filter_types.items():
+                action = menu.addAction(filter_name)
+                action.triggered.connect(
+                    lambda checked, f=filter_type, r=response: 
+                    self.import_well_known_filter(f, r)
+                )
         
         # Export menu (moved below File menu)
         export_menu = QMenu("Export", self)
@@ -293,9 +307,52 @@ class MainWindow(QMainWindow):
                     f"Failed to import filter: {str(e)}"
                 )
             
-    def import_well_known_filter(self, filter_type):
-        # TODO: Implement well-known filter import
-        pass
+    def import_well_known_filter(self, filter_type, response):
+        # Clear existing filter
+        self.filter.zeros = []
+        self.filter.poles = []
+        self.filter.all_pass_filters = []
+        
+        # Define filter parameters
+        order = 4  # Default filter order
+        cutoff = 0.5  # Normalized cutoff frequency (0 to 1)
+        ripple = 1  # Passband ripple in dB (for Chebyshev)
+        stopband_attenuation = 40  # Stopband attenuation in dB (for elliptic)
+        
+        # Calculate analog prototype
+        if filter_type == "butterworth":
+            z, p, k = signal.butter(order, cutoff, analog=True, output='zpk')
+        elif filter_type == "chebyshev":
+            z, p, k = signal.cheby1(order, ripple, cutoff, analog=True, output='zpk')
+        elif filter_type == "inverse_chebyshev":
+            z, p, k = signal.cheby2(order, stopband_attenuation, cutoff, analog=True, output='zpk')
+        elif filter_type == "bessel":
+            z, p, k = signal.bessel(order, cutoff, analog=True, output='zpk')
+        elif filter_type == "elliptic":
+            z, p, k = signal.ellip(order, ripple, stopband_attenuation, cutoff, analog=True, output='zpk')
+        
+        # Transform to digital filter using bilinear transform
+        z_d, p_d, k_d = signal.bilinear_zpk(z, p, k, fs=4)
+        
+        # Convert to high-pass if needed
+        if response == "hpf":
+            z_d = [-1 if x == 1 else 1 if x == -1 else -x for x in z_d]
+            p_d = [-1 if x == 1 else 1 if x == -1 else -x for x in p_d]
+        
+        # Convert to band-pass if needed
+        elif response == "bpf":
+            # Define band edges
+            low_freq = 0.3
+            high_freq = 0.7
+            z_d, p_d, k_d = signal.lp2bp_zpk(z_d, p_d, k_d, low_freq, high_freq)
+        
+        # Update filter
+        self.filter.zeros = [complex(x.real, x.imag) for x in z_d]
+        self.filter.poles = [complex(x.real, x.imag) for x in p_d]
+        self.filter.gain = float(k_d.real)
+        
+        # Notify subscribers
+        self.filter.notify_subscribers()
 
     def save_filter(self):
         file_path, _ = QFileDialog.getSaveFileName(

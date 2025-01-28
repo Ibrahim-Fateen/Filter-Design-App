@@ -23,6 +23,7 @@ class Filter:
         self.subscribers.append((callback, instance))
 
     def notify_subscribers(self, sender=None):
+        self._normalize_gain()
         for callback, instance in self.subscribers:
             if sender is not instance:
                 callback(self)
