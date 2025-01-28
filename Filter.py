@@ -60,7 +60,7 @@ class Filter:
         self.all_pass_zeros = []
         self.all_pass_poles = []
         for ap in self.all_pass_filters:
-            a = ap["coefficient"]
+            a = ap["a"]
             angle = ap["theta"]
             zero = 1 / a * np.exp(1j * angle)
             pole = a * np.exp(1j * angle)
@@ -165,14 +165,12 @@ class Filter:
             'gain': self.gain
         }
 
-        filepath = self.filters_dir / f"{filename}.dsp"
-        with open(filepath, 'w') as f:
+        with open(filename, 'w') as f:
             json.dump(data, f, indent=2)
 
     def load_from_file(self, filename):
         """Load filter from JSON file"""
-        filepath = self.filters_dir / f"{filename}.dsp"
-        with open(filepath, 'r') as f:
+        with open(filename, 'r') as f:
             data = json.load(f)
 
         self.zeros = [complex(z[0], z[1]) for z in data['zeros']]
